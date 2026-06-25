@@ -155,7 +155,7 @@ fun TopHeaderSection(primaryColor: Color) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "식단관리", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
-            Text(text = "건강한 하루, 균형 잡힌 식단 💚", fontSize = 14.sp, color = Color.Gray)
+            Text(text = "건강한 하루, 균형 잡힌 식단", fontSize = 14.sp, color = Color.Gray)
         }
         Row {
             IconButton(onClick = { }) { Icon(Icons.Default.Notifications, contentDescription = "알림") }
@@ -504,11 +504,11 @@ fun GenerateStep2Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(32.dp))
-                AgentCard("실속 관리 Agent", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
+                AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
                 Spacer(modifier = Modifier.height(16.dp))
-                AgentCard("패밀리 케어 Agent", "남녀노소 누구나 좋아하는 대중적인 다인 가구용 가정식 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
+                AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
                 Spacer(modifier = Modifier.height(16.dp))
-                AgentCard("혈당 케어 Agent", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
+                AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
             }
         }
     }
