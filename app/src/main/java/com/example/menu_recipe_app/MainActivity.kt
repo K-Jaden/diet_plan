@@ -28,8 +28,11 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
+import java.time.LocalDate
+import java.time.YearMonth
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.ui.text.SpanStyle
 
 class MainActivity : ComponentActivity() {
@@ -413,7 +416,7 @@ fun MainScreen(onNavigateToGenerate: () -> Unit) { // 매개변수 추가됨!
             Spacer(modifier = Modifier.height(24.dp))
             WeeklyGenerateCard(primaryGreen, onNavigateToGenerate) // 버튼 클릭 시 화면 이동
             Spacer(modifier = Modifier.height(24.dp))
-            CalendarCardPlaceholder()
+            CalendarCard()
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
@@ -463,20 +466,158 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
 }
 
 @Composable
-fun CalendarCardPlaceholder() {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+fun CalendarCard() {
+    // 현재 달과 선택된 날짜 상태 관리 (기본값: 오늘)
+    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val primaryGreen = Color(0xFF5A8754)
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            // 1. 상단 헤더 (타이틀, 월 이동, 범례)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 타이틀
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.Gray)
+                    Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
-                Text("<   2026년 6월   >", fontWeight = FontWeight.Bold)
+
+                // 월 이동 컨트롤러 (< 2026년 6월 >)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { currentMonth = currentMonth.minusMonths(1) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "이전 달")
+                    }
+                    Text(
+                        text = "${currentMonth.year}년 ${currentMonth.monthValue}월",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    IconButton(
+                        onClick = { currentMonth = currentMonth.plusMonths(1) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "다음 달")
+                    }
+                }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 범례 (식단 계획, 기록)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("식단 계획", fontSize = 10.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.width(12.dp))
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF8D6E63)))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("기록", fontSize = 10.sp, color = Color.Gray)
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(200.dp).background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                Text("여기에 캘린더 라이브러리 연동 예정", color = Color.Gray)
+
+            // 2. 요일 헤더 (일 ~ 토)
+            val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                daysOfWeek.forEachIndexed { index, day ->
+                    val color = when (index) {
+                        0 -> Color.Red        // 일요일
+                        6 -> Color(0xFF1976D2) // 토요일
+                        else -> Color.DarkGray
+                    }
+                    Text(text = day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 3. 달력 그리드 생성
+            val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7 // 일요일=0, 월요일=1...
+            val daysInMonth = currentMonth.lengthOfMonth()
+
+            // 총 보여줄 셀 개수 (빈 칸 포함, 최대 6줄 * 7일 = 42)
+            val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(7),
+                modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), // 달력 높이 동적 설정
+                userScrollEnabled = false
+            ) {
+                items(totalCells) { index ->
+                    val dayOffset = index - firstDayOfWeek + 1
+                    if (dayOffset in 1..daysInMonth) {
+                        val date = currentMonth.atDay(dayOffset)
+                        CalendarDayItem(
+                            date = date,
+                            isSelected = date == selectedDate,
+                            onClick = { selectedDate = date },
+                            primaryGreen = primaryGreen
+                        )
+                    } else {
+                        // 날짜가 없는 빈 칸
+                        Box(modifier = Modifier.size(48.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CalendarDayItem(date: LocalDate, isSelected: Boolean, onClick: () -> Unit, primaryGreen: Color) {
+    // 더미 데이터: 이미지처럼 그럴싸하게 보이도록 짝수/홀수일에 식단 아이콘 배치
+    val hasPlan = date.dayOfMonth % 2 != 0 || date.dayOfMonth % 5 == 0
+    val hasRecord = date.dayOfMonth % 3 == 0
+
+    Column(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent)
+            .clickable { onClick() }
+            .padding(top = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 날짜 텍스트
+        Box(
+            modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = date.dayOfMonth.toString(),
+                fontSize = 14.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) Color.White else Color.Black
+            )
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // 아이콘 영역 (식단 계획 & 기록)
+        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+            if (hasPlan) {
+                Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
+            }
+            if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
+            if (hasRecord) {
+                // 냄비 모양 대신 간단한 갈색 아이콘
+                Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
+            }
+            // 둘 다 없으면 빈 점으로 자리 차지 (레이아웃 유지)
+            if (!hasPlan && !hasRecord) {
+                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
             }
         }
     }
@@ -510,10 +651,10 @@ fun RowScope.IngredientItem(title: String, count: String, bgColor: Color) {
 }
 
 @Composable
-fun BottomNavigationBar(primaryColor: Color) {
+fun BottomNavigationBar() {
     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
         NavigationBarItem(icon = { Icon(Icons.Default.Home, contentDescription = "홈") }, label = { Text("홈") }, selected = true, onClick = { })
-        NavigationBarItem(icon = { Icon(Icons.Default.List, contentDescription = "식단") }, label = { Text("식단") }, selected = false, onClick = { })
+        NavigationBarItem(icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "식단") }, label = { Text("식단") }, selected = false, onClick = { })
         NavigationBarItem(icon = { }, label = { }, selected = false, onClick = { }, enabled = false)
         NavigationBarItem(icon = { Icon(Icons.Default.BarChart, contentDescription = "통계") }, label = { Text("통계") }, selected = false, onClick = { })
         NavigationBarItem(icon = { Icon(Icons.Default.Person, contentDescription = "MY") }, label = { Text("MY") }, selected = false, onClick = { })
@@ -850,7 +991,7 @@ fun GenerateStep4Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEd
                     Text(
                         text = androidx.compose.ui.text.buildAnnotatedString {
                             append("식단표 ")
-                            withStyle(style = androidx.compose.ui.text.SpanStyle(color = primaryGreen)) {
+                            withStyle(style = SpanStyle(color = primaryGreen)) {
                                 append("저장 완료")
                             }
                         },
