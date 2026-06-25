@@ -407,7 +407,7 @@ fun MainScreen(onNavigateToGenerate: () -> Unit) { // 매개변수 추가됨!
             }
         },
         floatingActionButtonPosition = FabPosition.Center,
-        bottomBar = { BottomNavigationBar(primaryGreen) }
+        bottomBar = { BottomNavigationBar() }
     ) { innerPadding ->
         Column(
             modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)
