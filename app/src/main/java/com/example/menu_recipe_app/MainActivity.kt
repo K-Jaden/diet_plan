@@ -302,18 +302,25 @@ fun AgentCard(
 }
 
 // ==========================================
-// 1단계 화면 (수정됨: 2단계 이동 연결 및 공통 마일스톤 적용)
+// 1단계: 재료 선택 (재료 있음 선택 시 입력 UI 확장)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+
+    // 상태 관리
     var selectedOption by remember { mutableStateOf<String?>(null) }
+    var textInput by remember { mutableStateOf("") }
+    val myIngredients = remember { mutableStateListOf<String>() } // 유저가 추가한 재료 리스트
+
+    // 자주 쓰는 추천 재료 리스트
+    val recommendedIngredients = listOf("계란", "양파", "대파", "마늘", "두부", "닭가슴살", "돼지고기", "감자")
 
     Scaffold(
         containerColor = backgroundColor,
-        topBar = { /* ... 이전과 동일한 TopAppBar ... */
+        topBar = {
             TopAppBar(
                 title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
                 navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
@@ -321,38 +328,162 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
             )
         },
-        bottomBar = { /* ... 이전과 동일한 버튼 ... */
+        bottomBar = {
             Button(
                 onClick = onNextClick,
-                enabled = selectedOption != null,
+                // '있음'을 골랐을 때는 재료를 최소 1개 이상 추가해야 다음으로 이동 가능
+                enabled = selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty()),
                 colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFE0E0E0)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().padding(20.dp).height(56.dp)
             ) {
-                Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption != null) Color.White else Color.Gray)
+                Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty())) Color.White else Color.Gray)
             }
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 1) // 스마트 마일스톤 적용!
+            StepIndicator(currentStep = 1)
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             Box(modifier = Modifier.size(56.dp).background(Color(0xFFE8F5E9), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Eco, contentDescription = null, tint = primaryGreen, modifier = Modifier.size(32.dp))
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Text("현재 사용할 수 있는\n재료가 있나요?", fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 34.sp)
             Spacer(modifier = Modifier.height(12.dp))
             Text("보유한 재료에 맞춰 맛있고 건강한 식단을 추천해드려요.", fontSize = 14.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(40.dp))
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // 기존 카드 2개 영역
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 없음", description = "보유한 재료 없이\n식단을 추천받을래요.", isSelected = selectedOption == "없음", onClick = { selectedOption = "없음" }, primaryColor = primaryGreen)
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 있음", description = "가지고 있는 재료로\n식단을 추천받을래요.", isSelected = selectedOption == "있음", onClick = { selectedOption = "있음" }, primaryColor = primaryGreen)
             }
+
+            // ==========================================
+            // [★ 확장 UI] '재료 있음'을 선택했을 때만 스르륵 나타나는 입력 공간
+            // ==========================================
+            if (selectedOption == "있음") {
+                Spacer(modifier = Modifier.height(32.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFEEEEEE))
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
+                    Text("어떤 재료가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 1. 직접 입력창 (TextField)
+                    OutlinedTextField(
+                        value = textInput,
+                        onValueChange = { textInput = it },
+                        placeholder = { Text("재료 직접 입력 (예: 브로콜리)", color = Color.LightGray, fontSize = 14.sp) },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                if (textInput.isNotBlank() && !myIngredients.contains(textInput.trim())) {
+                                    myIngredients.add(textInput.trim())
+                                    textInput = "" // 입력창 비우기
+                                }
+                            }) {
+                                Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = primaryGreen)
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryGreen,
+                            unfocusedBorderColor = Color(0xFFEEEEEE),
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 2. 추가된 재료 태그(Chip)들이 나열되는 공간
+                    if (myIngredients.isNotEmpty()) {
+                        Text("선택된 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // FlowRow 대신 가로 가변 배열 레이아웃을 간단히 표현하기 위한 컴포넌트
+                        Column {
+                            // 재료들을 가로로 4개씩 줄바꿈해가며 띄워줌
+                            myIngredients.chunked(4).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                    rowItems.forEach { ingredient ->
+                                        InputTagChip(name = ingredient, onDelete = { myIngredients.remove(ingredient) }, primaryColor = primaryGreen)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // 3. 자주 쓰는 추천 재료 버튼 목록
+                    Text("자주 쓰는 추천 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Column {
+                        recommendedIngredients.chunked(4).forEach { rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                rowItems.forEach { ingredient ->
+                                    val isAlreadyAdded = myIngredients.contains(ingredient)
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isAlreadyAdded) Color(0xFFF0F0F0) else Color.White,
+                                        border = BorderStroke(1.dp, if (isAlreadyAdded) Color.Transparent else Color(0xFFEEEEEE)),
+                                        modifier = Modifier.clickable {
+                                            if (!isAlreadyAdded) myIngredients.add(ingredient)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = if (isAlreadyAdded) "$ingredient ✓" else "+ $ingredient",
+                                            fontSize = 13.sp,
+                                            color = if (isAlreadyAdded) Color.LightGray else Color.DarkGray,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(40.dp)) // 하단 여백
+        }
+    }
+}
+
+// 추가된 재료를 보여주는 예쁜 X버튼 칩(Chip) 컴포넌트
+@Composable
+fun InputTagChip(name: String, onDelete: () -> Unit, primaryColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFFE8F5E9),
+        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Text(name, fontSize = 13.sp, color = primaryColor, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "삭제",
+                tint = primaryColor,
+                modifier = Modifier
+                    .size(14.dp)
+                    .clickable { onDelete() }
+            )
         }
     }
 }
@@ -428,7 +559,7 @@ fun TopHeaderSection(primaryColor: Color) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "식단관리", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
-            Text(text = "건강한 하루, 균형 잡힌 식단 💚", fontSize = 14.sp, color = Color.Gray)
+            Text(text = "건강한 하루, 균형 잡힌 식단", fontSize = 14.sp, color = Color.Gray)
         }
         Row {
             IconButton(onClick = { }) { Icon(Icons.Default.Notifications, contentDescription = "알림") }
