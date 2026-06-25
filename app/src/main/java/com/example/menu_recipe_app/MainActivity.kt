@@ -1,4 +1,4 @@
-package com.example.menu_recipe_app // 본인 패키지명으로 꼭 확인하세요!
+package com.example.menu_recipe_app // ★ 본인 패키지명으로 꼭 확인하세요!
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,11 +8,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
@@ -30,10 +37,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import java.time.LocalDate
 import java.time.YearMonth
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.ui.text.SpanStyle
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,7 +51,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // ==========================================
-// 1. 네비게이션 라우터 (4단계 및 메인 복귀 완벽 적용)
+// 1. 네비게이션 라우터 (레시피 탭 포함)
 // ==========================================
 @Composable
 fun AppNavigation() {
@@ -56,39 +59,31 @@ fun AppNavigation() {
 
     NavHost(navController = navController, startDestination = "main") {
         composable("main") {
-            MainScreen(onNavigateToGenerate = { navController.navigate("generate_step1") })
+            MainScreen(
+                navController = navController,
+                onNavigateToGenerate = { navController.navigate("generate_step1") }
+            )
         }
         composable("generate_step1") {
-            GenerateStep1Screen(
-                onBackClick = { navController.popBackStack() },
-                onNextClick = { navController.navigate("generate_step2") }
-            )
+            GenerateStep1Screen(onBackClick = { navController.popBackStack() }, onNextClick = { navController.navigate("generate_step2") })
         }
         composable("generate_step2") {
-            GenerateStep2Screen(
-                onBackClick = { navController.popBackStack() },
-                onNextClick = { navController.navigate("generate_step3") }
-            )
+            GenerateStep2Screen(onBackClick = { navController.popBackStack() }, onNextClick = { navController.navigate("generate_step3") })
         }
         composable("generate_step3") {
-            GenerateStep3Screen(
-                onBackClick = { navController.popBackStack() },
-                onSaveClick = { navController.navigate("generate_step4") }, // 4단계로 이동!
-                onRegenerateClick = { /* TODO: 식단 다시 생성 로직 */ },
-                onChangeAgentClick = { navController.popBackStack() }
-            )
+            GenerateStep3Screen(onBackClick = { navController.popBackStack() }, onSaveClick = { navController.navigate("generate_step4") }, onRegenerateClick = { }, onChangeAgentClick = { navController.popBackStack() })
         }
         composable("generate_step4") {
-            GenerateStep4Screen(
-                onBackClick = { navController.popBackStack() },
-                onGoMainClick = {
-                    // 메인으로 돌아갈 때, 중간에 쌓인 1, 2, 3단계 화면 기록을 싹 지웁니다.
-                    navController.navigate("main") {
-                        popUpTo("main") { inclusive = false }
-                    }
-                },
-                onEditClick = { navController.popBackStack() } // 다시 3단계(수정)로 돌아가기
+            GenerateStep4Screen(onBackClick = { navController.popBackStack() }, onGoMainClick = { navController.navigate("main") { popUpTo("main") { inclusive = false } } }, onEditClick = { navController.popBackStack() })
+        }
+        composable("recipe") {
+            RecipeScreen(
+                navController = navController,
+                onNavigateToDetail = { navController.navigate("recipe_detail") }
             )
+        }
+        composable("recipe_detail") {
+            RecipeDetailScreen(onBackClick = { navController.popBackStack() })
         }
     }
 }
@@ -102,446 +97,48 @@ fun StepIndicator(currentStep: Int) {
     val grayColor = Color(0xFFEEEEEE)
     val textGray = Color.Gray
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
         val steps = listOf("재료 선택", "식단 유형", "식단 확인", "완료")
-
         steps.forEachIndexed { index, title ->
             val stepNumber = index + 1
             val isCompleted = stepNumber < currentStep
             val isActive = stepNumber == currentStep
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(if (isActive || isCompleted) primaryGreen else grayColor, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isCompleted) {
-                        Icon(Icons.Default.Check, contentDescription = "완료", tint = Color.White, modifier = Modifier.size(18.dp))
-                    } else {
-                        Text(stepNumber.toString(), color = if (isActive) Color.White else textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+                Box(modifier = Modifier.size(28.dp).background(if (isActive || isCompleted) primaryGreen else grayColor, CircleShape), contentAlignment = Alignment.Center) {
+                    if (isCompleted) Icon(Icons.Default.Check, contentDescription = "완료", tint = Color.White, modifier = Modifier.size(18.dp))
+                    else Text(stepNumber.toString(), color = if (isActive) Color.White else textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Text(title, fontSize = 10.sp, color = if (isActive || isCompleted) primaryGreen else textGray, modifier = Modifier.padding(top = 4.dp))
             }
-
             if (index < steps.size - 1) {
-                HorizontalDivider(
-                    modifier = Modifier
-                        .width(40.dp)
-                        .padding(horizontal = 4.dp)
-                        .offset(y = (-8).dp),
-                    color = if (isCompleted) primaryGreen else grayColor,
-                    thickness = 1.dp
-                )
+                HorizontalDivider(modifier = Modifier.width(40.dp).padding(horizontal = 4.dp).offset(y = (-8).dp), color = if (isCompleted) primaryGreen else grayColor, thickness = 1.dp)
             }
         }
     }
 }
 
 // ==========================================
-// 2. 새로운 화면: 식단표 생성 2단계 (Agent 선택)
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GenerateStep2Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
-    val backgroundColor = Color(0xFFFCFCFA)
-    val primaryGreen = Color(0xFF5A8754)
-    var selectedAgent by remember { mutableStateOf<String?>(null) }
-
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
-                actions = { Spacer(modifier = Modifier.width(48.dp)) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
-            )
-        },
-        bottomBar = {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("선택한 Agent는 언제든 변경할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = onNextClick,
-                    enabled = selectedAgent != null,
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
-                    Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
-                }
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 2) // 2단계로 설정!
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                Text("영양사 Agent를 선택하세요", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = Color.Gray)
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Agent 리스트
-                AgentCard(
-                    title = "균형식 Agent",
-                    description = "일반적인 영양 균형 중심 식단 추천",
-                    targetIcon = Icons.Default.Eco,
-                    targetText = "건강한 식습관을 만들고 싶은 분",
-                    isRecommended = true,
-                    isSelected = selectedAgent == "균형식",
-                    onClick = { selectedAgent = "균형식" },
-                    primaryColor = primaryGreen
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                AgentCard(
-                    title = "체중관리 Agent",
-                    description = "체중 감량 및 체지방 감소에\n최적화된 식단 추천",
-                    targetIcon = Icons.Default.LocalFireDepartment, // 임시 불꽃 아이콘
-                    targetText = "체중 감량을 목표로 하는 분",
-                    isRecommended = false,
-                    isSelected = selectedAgent == "체중관리",
-                    onClick = { selectedAgent = "체중관리" },
-                    primaryColor = primaryGreen
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                AgentCard(
-                    title = "운동영양 Agent",
-                    description = "운동 퍼포먼스 향상과 근육 증가에\n특화된 식단 추천",
-                    targetIcon = Icons.Default.FitnessCenter, // 덤벨 아이콘
-                    targetText = "운동 중이거나 근육량 증가를 원하는 분",
-                    isRecommended = false,
-                    isSelected = selectedAgent == "운동영양",
-                    onClick = { selectedAgent = "운동영양" },
-                    primaryColor = primaryGreen
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AgentCard(
-    title: String, description: String, targetIcon: androidx.compose.ui.graphics.vector.ImageVector, targetText: String,
-    isRecommended: Boolean, isSelected: Boolean, onClick: () -> Unit, primaryColor: Color
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = if (isSelected) BorderStroke(1.5.dp, primaryColor) else BorderStroke(1.dp, Color(0xFFEEEEEE)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
-    ) {
-        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            // 왼쪽 3D 캐릭터 프로필 자리 (원형 회색 박스로 임시 처리)
-            Box(
-                modifier = Modifier.size(72.dp).clip(CircleShape).background(Color(0xFFF0F0F0)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Person, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // 중앙 텍스트 영역
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    if (isRecommended) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier.background(Color(0xFFE8F5E9), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text("추천", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(description, fontSize = 13.sp, color = Color.DarkGray, lineHeight = 18.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(targetIcon, contentDescription = null, tint = primaryColor, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(targetText, fontSize = 12.sp, color = Color.Gray)
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 우측 라디오 버튼 영역
-            RadioButton(
-                selected = isSelected,
-                onClick = null, // Card 자체 클릭으로 처리
-                colors = RadioButtonDefaults.colors(selectedColor = primaryColor, unselectedColor = Color.LightGray)
-            )
-        }
-    }
-}
-
-// ==========================================
-// 1단계: 재료 선택 (재료 있음 선택 시 입력 UI 확장)
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
-    val backgroundColor = Color(0xFFFCFCFA)
-    val primaryGreen = Color(0xFF5A8754)
-
-    // 상태 관리
-    var selectedOption by remember { mutableStateOf<String?>(null) }
-    var textInput by remember { mutableStateOf("") }
-    val myIngredients = remember { mutableStateListOf<String>() } // 유저가 추가한 재료 리스트
-
-    // 자주 쓰는 추천 재료 리스트
-    val recommendedIngredients = listOf("계란", "양파", "대파", "마늘", "두부", "닭가슴살", "돼지고기", "감자")
-
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
-                actions = { Spacer(modifier = Modifier.width(48.dp)) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
-            )
-        },
-        bottomBar = {
-            Button(
-                onClick = onNextClick,
-                // '있음'을 골랐을 때는 재료를 최소 1개 이상 추가해야 다음으로 이동 가능
-                enabled = selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty()),
-                colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFE0E0E0)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(20.dp).height(56.dp)
-            ) {
-                Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty())) Color.White else Color.Gray)
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 1)
-
-            Spacer(modifier = Modifier.height(32.dp))
-            Box(modifier = Modifier.size(56.dp).background(Color(0xFFE8F5E9), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Eco, contentDescription = null, tint = primaryGreen, modifier = Modifier.size(32.dp))
-            }
-            Spacer(modifier = Modifier.height(20.dp))
-            Text("현재 사용할 수 있는\n재료가 있나요?", fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 34.sp)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("보유한 재료에 맞춰 맛있고 건강한 식단을 추천해드려요.", fontSize = 14.sp, color = Color.Gray)
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 기존 카드 2개 영역
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                SelectionCard(modifier = Modifier.weight(1f), title = "재료 없음", description = "보유한 재료 없이\n식단을 추천받을래요.", isSelected = selectedOption == "없음", onClick = { selectedOption = "없음" }, primaryColor = primaryGreen)
-                SelectionCard(modifier = Modifier.weight(1f), title = "재료 있음", description = "가지고 있는 재료로\n식단을 추천받을래요.", isSelected = selectedOption == "있음", onClick = { selectedOption = "있음" }, primaryColor = primaryGreen)
-            }
-
-            // ==========================================
-            // [★ 확장 UI] '재료 있음'을 선택했을 때만 스르륵 나타나는 입력 공간
-            // ==========================================
-            if (selectedOption == "있음") {
-                Spacer(modifier = Modifier.height(32.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFEEEEEE))
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
-                    Text("어떤 재료가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 1. 직접 입력창 (TextField)
-                    OutlinedTextField(
-                        value = textInput,
-                        onValueChange = { textInput = it },
-                        placeholder = { Text("재료 직접 입력 (예: 브로콜리)", color = Color.LightGray, fontSize = 14.sp) },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                if (textInput.isNotBlank() && !myIngredients.contains(textInput.trim())) {
-                                    myIngredients.add(textInput.trim())
-                                    textInput = "" // 입력창 비우기
-                                }
-                            }) {
-                                Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = primaryGreen)
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = primaryGreen,
-                            unfocusedBorderColor = Color(0xFFEEEEEE),
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // 2. 추가된 재료 태그(Chip)들이 나열되는 공간
-                    if (myIngredients.isNotEmpty()) {
-                        Text("선택된 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // FlowRow 대신 가로 가변 배열 레이아웃을 간단히 표현하기 위한 컴포넌트
-                        Column {
-                            // 재료들을 가로로 4개씩 줄바꿈해가며 띄워줌
-                            myIngredients.chunked(4).forEach { rowItems ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                                    rowItems.forEach { ingredient ->
-                                        InputTagChip(name = ingredient, onDelete = { myIngredients.remove(ingredient) }, primaryColor = primaryGreen)
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    // 3. 자주 쓰는 추천 재료 버튼 목록
-                    Text("자주 쓰는 추천 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Column {
-                        recommendedIngredients.chunked(4).forEach { rowItems ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                                rowItems.forEach { ingredient ->
-                                    val isAlreadyAdded = myIngredients.contains(ingredient)
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = if (isAlreadyAdded) Color(0xFFF0F0F0) else Color.White,
-                                        border = BorderStroke(1.dp, if (isAlreadyAdded) Color.Transparent else Color(0xFFEEEEEE)),
-                                        modifier = Modifier.clickable {
-                                            if (!isAlreadyAdded) myIngredients.add(ingredient)
-                                        }
-                                    ) {
-                                        Text(
-                                            text = if (isAlreadyAdded) "$ingredient ✓" else "+ $ingredient",
-                                            fontSize = 13.sp,
-                                            color = if (isAlreadyAdded) Color.LightGray else Color.DarkGray,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(40.dp)) // 하단 여백
-        }
-    }
-}
-
-// 추가된 재료를 보여주는 예쁜 X버튼 칩(Chip) 컴포넌트
-@Composable
-fun InputTagChip(name: String, onDelete: () -> Unit, primaryColor: Color) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFE8F5E9),
-        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(name, fontSize = 13.sp, color = primaryColor, fontWeight = FontWeight.Medium)
-            Spacer(modifier = Modifier.width(4.dp))
-            Icon(
-                Icons.Default.Close,
-                contentDescription = "삭제",
-                tint = primaryColor,
-                modifier = Modifier
-                    .size(14.dp)
-                    .clickable { onDelete() }
-            )
-        }
-    }
-}
-
-@Composable
-fun SelectionCard(modifier: Modifier, title: String, description: String, isSelected: Boolean, onClick: () -> Unit, primaryColor: Color) {
-    Card(
-        modifier = modifier.height(220.dp).clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = if (isSelected) BorderStroke(2.dp, primaryColor) else BorderStroke(1.dp, Color(0xFFEEEEEE)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (isSelected) {
-                Icon(Icons.Default.CheckCircle, contentDescription = "선택됨", tint = primaryColor, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
-            }
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Box(modifier = Modifier.size(80.dp).background(Color(0xFFF5F5F5), CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(if(title.contains("없음")) Icons.Default.Kitchen else Icons.Default.ShoppingBasket, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(40.dp))
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if(isSelected) primaryColor else Color.Black)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(description, fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
-            }
-        }
-    }
-}
-
-// --- 아래 MainScreen 영역은 이전 답변과 완벽히 동일하므로 길이 상 축약했습니다 ---
-// (복사하실 때 기존 MainActivity.kt 맨 아래에 있던 MainScreen, TopHeaderSection, WeeklyGenerateCard 등의 코드는 그대로 두시면 됩니다!)
-
-// ==========================================
-// 3. 기존 메인 화면 (가운데 + 버튼 삭제됨)
+// 메인 화면
 // ==========================================
 @Composable
-fun MainScreen(onNavigateToGenerate: () -> Unit) {
+fun MainScreen(navController: androidx.navigation.NavController, onNavigateToGenerate: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = backgroundColor,
-        // floatingActionButton (가운데 떠있는 + 버튼) 관련 코드 삭제!
-        bottomBar = { BottomNavigationBar() }
+        bottomBar = { BottomNavigationBar(navController, "main") }
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             TopHeaderSection(primaryGreen)
             Spacer(modifier = Modifier.height(24.dp))
-            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate) // 이 버튼을 누르면 화면이 넘어갑니다
+            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
             Spacer(modifier = Modifier.height(24.dp))
-            CalendarCard() // 아까 만든 캘린더
+            CalendarCard()
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
@@ -549,7 +146,6 @@ fun MainScreen(onNavigateToGenerate: () -> Unit) {
     }
 }
 
-// --- 아래는 이전 답변과 동일한 MainScreen용 UI 컴포넌트들입니다 ---
 @Composable
 fun TopHeaderSection(primaryColor: Color) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -559,7 +155,7 @@ fun TopHeaderSection(primaryColor: Color) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "식단관리", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
-            Text(text = "건강한 하루, 균형 잡힌 식단", fontSize = 14.sp, color = Color.Gray)
+            Text(text = "건강한 하루, 균형 잡힌 식단 💚", fontSize = 14.sp, color = Color.Gray)
         }
         Row {
             IconButton(onClick = { }) { Icon(Icons.Default.Notifications, contentDescription = "알림") }
@@ -578,12 +174,7 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(text = "이번주 식단을 생성해보세요!", fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = onNavigate, // 버튼 클릭 시 화면 이동
-                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Button(onClick = onNavigate, colors = ButtonDefaults.buttonColors(containerColor = primaryColor), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Text("생성하러 가기", modifier = Modifier.padding(vertical = 4.dp))
             }
         }
@@ -592,55 +183,29 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
 
 @Composable
 fun CalendarCard() {
-    // 현재 달과 선택된 날짜 상태 관리 (기본값: 오늘)
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     val primaryGreen = Color(0xFF5A8754)
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
-            // 1. 상단 헤더 (타이틀, 월 이동, 범례)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 타이틀
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
-
-                // 월 이동 컨트롤러 (< 2026년 6월 >)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = { currentMonth = currentMonth.minusMonths(1) },
-                        modifier = Modifier.size(24.dp)
-                    ) {
+                    IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }, modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "이전 달")
                     }
-                    Text(
-                        text = "${currentMonth.year}년 ${currentMonth.monthValue}월",
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                    IconButton(
-                        onClick = { currentMonth = currentMonth.plusMonths(1) },
-                        modifier = Modifier.size(24.dp)
-                    ) {
+                    Text(text = "${currentMonth.year}년 ${currentMonth.monthValue}월", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                    IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }, modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.ChevronRight, contentDescription = "다음 달")
                     }
                 }
             }
-
             Spacer(modifier = Modifier.height(12.dp))
-
-            // 범례 (식단 계획, 기록)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
                 Spacer(modifier = Modifier.width(4.dp))
@@ -650,48 +215,26 @@ fun CalendarCard() {
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("기록", fontSize = 10.sp, color = Color.Gray)
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // 2. 요일 헤더 (일 ~ 토)
             val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                 daysOfWeek.forEachIndexed { index, day ->
-                    val color = when (index) {
-                        0 -> Color.Red        // 일요일
-                        6 -> Color(0xFF1976D2) // 토요일
-                        else -> Color.DarkGray
-                    }
+                    val color = when (index) { 0 -> Color.Red; 6 -> Color(0xFF1976D2); else -> Color.DarkGray }
                     Text(text = day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
                 }
             }
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            // 3. 달력 그리드 생성
-            val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7 // 일요일=0, 월요일=1...
+            val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
             val daysInMonth = currentMonth.lengthOfMonth()
-
-            // 총 보여줄 셀 개수 (빈 칸 포함, 최대 6줄 * 7일 = 42)
             val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(7),
-                modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), // 달력 높이 동적 설정
-                userScrollEnabled = false
-            ) {
+            LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), userScrollEnabled = false) {
                 items(totalCells) { index ->
                     val dayOffset = index - firstDayOfWeek + 1
                     if (dayOffset in 1..daysInMonth) {
                         val date = currentMonth.atDay(dayOffset)
-                        CalendarDayItem(
-                            date = date,
-                            isSelected = date == selectedDate,
-                            onClick = { selectedDate = date },
-                            primaryGreen = primaryGreen
-                        )
+                        CalendarDayItem(date = date, isSelected = date == selectedDate, onClick = { selectedDate = date }, primaryGreen = primaryGreen)
                     } else {
-                        // 날짜가 없는 빈 칸
                         Box(modifier = Modifier.size(48.dp))
                     }
                 }
@@ -702,48 +245,19 @@ fun CalendarCard() {
 
 @Composable
 fun CalendarDayItem(date: LocalDate, isSelected: Boolean, onClick: () -> Unit, primaryGreen: Color) {
-    // 더미 데이터: 이미지처럼 그럴싸하게 보이도록 짝수/홀수일에 식단 아이콘 배치
     val hasPlan = date.dayOfMonth % 2 != 0 || date.dayOfMonth % 5 == 0
     val hasRecord = date.dayOfMonth % 3 == 0
 
-    Column(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent)
-            .clickable { onClick() }
-            .padding(top = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // 날짜 텍스트
-        Box(
-            modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = date.dayOfMonth.toString(),
-                fontSize = 14.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                color = if (isSelected) Color.White else Color.Black
-            )
+    Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
+            Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
         }
-
         Spacer(modifier = Modifier.height(2.dp))
-
-        // 아이콘 영역 (식단 계획 & 기록)
         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-            if (hasPlan) {
-                Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
-            }
+            if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
             if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
-            if (hasRecord) {
-                // 냄비 모양 대신 간단한 갈색 아이콘
-                Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
-            }
-            // 둘 다 없으면 빈 점으로 자리 차지 (레이아웃 유지)
-            if (!hasPlan && !hasRecord) {
-                Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
-            }
+            if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
+            if (!hasPlan && !hasRecord) Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
         }
     }
 }
@@ -776,47 +290,265 @@ fun RowScope.IngredientItem(title: String, count: String, bgColor: Color) {
 }
 
 @Composable
-fun BottomNavigationBar() {
+fun BottomNavigationBar(navController: androidx.navigation.NavController, currentRoute: String) {
+    val primaryGreen = Color(0xFF5A8754)
     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
         NavigationBarItem(
             icon = { Icon(Icons.Default.Home, contentDescription = "홈") },
             label = { Text("홈") },
-            selected = true,
-            onClick = { }
+            selected = currentRoute == "main",
+            onClick = { if (currentRoute != "main") navController.navigate("main") { popUpTo("main") { saveState = true } } },
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
-            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "식단") },
+            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "식단") }, // List 대신 FormatListBulleted 사용
             label = { Text("식단") },
-            selected = false,
+            selected = currentRoute == "diet",
             onClick = { }
         )
-        // 가운데 '생성' 버튼 자리를 비워두기 위해 썼던 투명 아이템 삭제!
         NavigationBarItem(
-            icon = { Icon(Icons.Default.BarChart, contentDescription = "통계") },
-            label = { Text("통계") },
-            selected = false,
-            onClick = { }
+            icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "레시피") }, // 신형 MenuBook 아이콘 적용
+            label = { Text("레시피") },
+            selected = currentRoute == "recipe",
+            onClick = { if (currentRoute != "recipe") navController.navigate("recipe") { popUpTo("main") { saveState = true } } },
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
             label = { Text("MY") },
-            selected = false,
+            selected = currentRoute == "my",
             onClick = { }
         )
     }
 }
 
 // ==========================================
-// 3. 수정된 화면: 식단표 생성 3단계 (식단 확인 - 하단 버튼 고정)
+// 1단계: 재료 선택
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+    var selectedOption by remember { mutableStateOf<String?>(null) }
+    var textInput by remember { mutableStateOf("") }
+    val myIngredients = remember { mutableStateListOf<String>() }
+    val recommendedIngredients = listOf("계란", "양파", "대파", "마늘", "두부", "닭가슴살", "돼지고기", "감자")
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = {
+            TopAppBar(
+                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                actions = { Spacer(modifier = Modifier.width(48.dp)) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        },
+        bottomBar = {
+            Button(
+                onClick = onNextClick,
+                enabled = selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty()),
+                colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFE0E0E0)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(20.dp).height(56.dp)
+            ) {
+                Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty())) Color.White else Color.Gray)
+            }
+        }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(modifier = Modifier.height(16.dp))
+            StepIndicator(currentStep = 1)
+            Spacer(modifier = Modifier.height(32.dp))
+            Box(modifier = Modifier.size(56.dp).background(Color(0xFFE8F5E9), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Eco, contentDescription = null, tint = primaryGreen, modifier = Modifier.size(32.dp))
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+            Text("현재 사용할 수 있는\n재료가 있나요?", fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 34.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("보유한 재료에 맞춰 맛있고 건강한 식단을 추천해드려요.", fontSize = 14.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(32.dp))
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                SelectionCard(modifier = Modifier.weight(1f), title = "재료 없음", description = "보유한 재료 없이\n식단을 추천받을래요.", isSelected = selectedOption == "없음", onClick = { selectedOption = "없음" }, primaryColor = primaryGreen)
+                SelectionCard(modifier = Modifier.weight(1f), title = "재료 있음", description = "가지고 있는 재료로\n식단을 추천받을래요.", isSelected = selectedOption == "있음", onClick = { selectedOption = "있음" }, primaryColor = primaryGreen)
+            }
+            if (selectedOption == "있음") {
+                Spacer(modifier = Modifier.height(32.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFEEEEEE))
+                Spacer(modifier = Modifier.height(24.dp))
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
+                    Text("어떤 재료가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = textInput,
+                        onValueChange = { textInput = it },
+                        placeholder = { Text("재료 직접 입력 (예: 브로콜리)", color = Color.LightGray, fontSize = 14.sp) },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                if (textInput.isNotBlank() && !myIngredients.contains(textInput.trim())) {
+                                    myIngredients.add(textInput.trim())
+                                    textInput = ""
+                                }
+                            }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = primaryGreen) }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = Color(0xFFEEEEEE), focusedContainerColor = Color.White, unfocusedContainerColor = Color.White),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (myIngredients.isNotEmpty()) {
+                        Text("선택된 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column {
+                            myIngredients.chunked(4).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                    rowItems.forEach { ingredient -> InputTagChip(name = ingredient, onDelete = { myIngredients.remove(ingredient) }, primaryColor = primaryGreen) }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    Text("자주 쓰는 추천 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column {
+                        recommendedIngredients.chunked(4).forEach { rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                rowItems.forEach { ingredient ->
+                                    val isAlreadyAdded = myIngredients.contains(ingredient)
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp), color = if (isAlreadyAdded) Color(0xFFF0F0F0) else Color.White, border = BorderStroke(1.dp, if (isAlreadyAdded) Color.Transparent else Color(0xFFEEEEEE)),
+                                        modifier = Modifier.clickable { if (!isAlreadyAdded) myIngredients.add(ingredient) }
+                                    ) { Text(text = if (isAlreadyAdded) "$ingredient ✓" else "+ $ingredient", fontSize = 13.sp, color = if (isAlreadyAdded) Color.LightGray else Color.DarkGray, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+fun InputTagChip(name: String, onDelete: () -> Unit, primaryColor: Color) {
+    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFE8F5E9), border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Text(name, fontSize = 13.sp, color = primaryColor, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(Icons.Default.Close, contentDescription = "삭제", tint = primaryColor, modifier = Modifier.size(14.dp).clickable { onDelete() })
+        }
+    }
+}
+
+@Composable
+fun SelectionCard(modifier: Modifier, title: String, description: String, isSelected: Boolean, onClick: () -> Unit, primaryColor: Color) {
+    Card(modifier = modifier.height(220.dp).clickable { onClick() }, colors = CardDefaults.cardColors(containerColor = Color.White), border = if (isSelected) BorderStroke(2.dp, primaryColor) else BorderStroke(1.dp, Color(0xFFEEEEEE)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (isSelected) Icon(Icons.Default.CheckCircle, contentDescription = "선택됨", tint = primaryColor, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Box(modifier = Modifier.size(80.dp).background(Color(0xFFF5F5F5), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(if(title.contains("없음")) Icons.Default.Kitchen else Icons.Default.ShoppingBasket, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(40.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if(isSelected) primaryColor else Color.Black)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(description, fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
+// ==========================================
+// 2단계: 에이전트 선택
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GenerateStep2Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+    var selectedAgent by remember { mutableStateOf<String?>(null) }
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = {
+            TopAppBar(
+                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                actions = { Spacer(modifier = Modifier.width(48.dp)) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        },
+        bottomBar = {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("선택한 Agent는 언제든 변경할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = onNextClick, enabled = selectedAgent != null, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
+            Spacer(modifier = Modifier.height(16.dp))
+            StepIndicator(currentStep = 2)
+            Spacer(modifier = Modifier.height(40.dp))
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                Text("영양사 Agent를 선택하세요", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(32.dp))
+                AgentCard("실속 관리 Agent", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
+                Spacer(modifier = Modifier.height(16.dp))
+                AgentCard("패밀리 케어 Agent", "남녀노소 누구나 좋아하는 대중적인 다인 가구용 가정식 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
+                Spacer(modifier = Modifier.height(16.dp))
+                AgentCard("혈당 케어 Agent", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
+            }
+        }
+    }
+}
+
+@Composable
+fun AgentCard(title: String, description: String, targetIcon: androidx.compose.ui.graphics.vector.ImageVector, targetText: String, isRecommended: Boolean, isSelected: Boolean, onClick: () -> Unit, primaryColor: Color) {
+    Card(modifier = Modifier.fillMaxWidth().clickable { onClick() }, colors = CardDefaults.cardColors(containerColor = Color.White), border = if (isSelected) BorderStroke(1.5.dp, primaryColor) else BorderStroke(1.dp, Color(0xFFEEEEEE)), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)) {
+        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp)) }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    if (isRecommended) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(modifier = Modifier.background(Color(0xFFE8F5E9), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("추천", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(description, fontSize = 13.sp, color = Color.DarkGray, lineHeight = 18.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(targetIcon, contentDescription = null, tint = primaryColor, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(targetText, fontSize = 12.sp, color = Color.Gray)
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            RadioButton(selected = isSelected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = primaryColor, unselectedColor = Color.LightGray))
+        }
+    }
+}
+
+// ==========================================
+// 3단계: 식단 확인
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun GenerateStep3Screen(
-    onBackClick: () -> Unit,
-    onSaveClick: () -> Unit,
-    onRegenerateClick: () -> Unit,
-    onChangeAgentClick: () -> Unit
-) {
+fun GenerateStep3Screen(onBackClick: () -> Unit, onSaveClick: () -> Unit, onRegenerateClick: () -> Unit, onChangeAgentClick: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
 
@@ -830,57 +562,27 @@ fun GenerateStep3Screen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
             )
         },
-        // 하단 액션 버튼 영역을 Scaffold의 bottomBar에 고정하여 스크롤에 관계없이 항상 보이도록 수정
         bottomBar = {
-            Column(
-                modifier = Modifier
-                    .background(backgroundColor)
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 24.dp, top = 8.dp)
-            ) {
-                // [★ 4단계 이동 버튼] 이 버튼을 누르면 4단계로 넘어갑니다!
-                Button(
-                    onClick = onSaveClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
+            Column(modifier = Modifier.background(backgroundColor).padding(horizontal = 20.dp).padding(bottom = 24.dp, top = 8.dp)) {
+                Button(onClick = onSaveClick, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Icon(Icons.Default.BookmarkBorder, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("이 식단으로 저장", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
-
-                // 서브 버튼 2개
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = onRegenerateClick,
-                        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray),
-                        modifier = Modifier.weight(1f).height(50.dp)
-                    ) {
+                    OutlinedButton(onClick = onRegenerateClick, border = BorderStroke(1.dp, Color(0xFFEEEEEE)), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray), modifier = Modifier.weight(1f).height(50.dp)) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("다시 생성하기", fontSize = 14.sp)
                     }
-                    OutlinedButton(
-                        onClick = onChangeAgentClick,
-                        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray),
-                        modifier = Modifier.weight(1f).height(50.dp)
-                    ) {
+                    OutlinedButton(onClick = onChangeAgentClick, border = BorderStroke(1.dp, Color(0xFFEEEEEE)), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray), modifier = Modifier.weight(1f).height(50.dp)) {
                         Icon(Icons.Default.PersonOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("다른 Agent 선택", fontSize = 14.sp)
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // 안내 문구
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -889,35 +591,15 @@ fun GenerateStep3Screen(
             }
         }
     ) { innerPadding ->
-        // 스크롤되는 상단 콘텐츠 영역
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Spacer(modifier = Modifier.height(16.dp))
             StepIndicator(currentStep = 3)
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // 1. 상단 Agent 요약 카드
             AgentSummaryCard(primaryGreen)
-
             Spacer(modifier = Modifier.height(32.dp))
-
-            // 2. 타이틀 및 요약 보기 버튼
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("이번 주 식단표", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
-                ) {
+                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFEEEEEE))) {
                     Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.BarChart, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Gray)
                         Spacer(modifier = Modifier.width(4.dp))
@@ -925,59 +607,34 @@ fun GenerateStep3Screen(
                     }
                 }
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // 3. 요일별 식단 카드 (가로 스크롤 Pager)
-            val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 7 })
+            val pagerState = rememberPagerState(pageCount = { 7 })
             val days = listOf("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
-
-            androidx.compose.foundation.pager.HorizontalPager(
-                state = pagerState,
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                pageSpacing = 16.dp
-            ) { page ->
-                DailyDietCard(
-                    dayName = days[page],
-                    isCurrentPage = pagerState.currentPage == page,
-                    primaryColor = primaryGreen
-                )
+            HorizontalPager(state = pagerState, contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 16.dp) { page ->
+                DailyDietCard(dayName = days[page], isCurrentPage = pagerState.currentPage == page, primaryColor = primaryGreen)
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // 4. Pager 인디케이터 (점)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 repeat(7) { iteration ->
                     val color = if (pagerState.currentPage == iteration) primaryGreen else Color(0xFFE0E0E0)
                     Box(modifier = Modifier.padding(4.dp).size(8.dp).clip(CircleShape).background(color))
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp)) // 버튼 영역과 겹치지 않게 여백 추가
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
-// --- 3단계 전용 UI 컴포넌트들 ---
-
 @Composable
 fun AgentSummaryCard(primaryColor: Color) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Person, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(32.dp))
-            }
+            Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(32.dp)) }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("선택된 Agent: ", fontSize = 12.sp, color = Color.Gray)
-                    Text("균형식 Agent", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primaryColor)
+                    Text("실속 관리 Agent", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primaryColor)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("이번 주 맞춤 식단이 생성되었어요", fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -992,39 +649,21 @@ fun AgentSummaryCard(primaryColor: Color) {
 @Composable
 fun DailyDietCard(dayName: String, isCurrentPage: Boolean, primaryColor: Color) {
     val borderColor = if (isCurrentPage) primaryColor else Color(0xFFEEEEEE)
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(if (isCurrentPage) 1.5.dp else 1.dp, borderColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
-    ) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(if (isCurrentPage) 1.5.dp else 1.dp, borderColor), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // 요일 뱃지
-            Box(
-                modifier = Modifier.align(Alignment.CenterHorizontally).background(Color(0xFFF9F9F9), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
+            Box(modifier = Modifier.align(Alignment.CenterHorizontally).background(Color(0xFFF9F9F9), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Text(dayName, fontWeight = FontWeight.Bold, color = if (isCurrentPage) primaryColor else Color.Gray, fontSize = 14.sp)
             }
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // 식사 리스트 (더미 데이터)
-            MealRow(mealType = "아침", primaryColor = primaryColor, menu = "밥, 된장국, 계란말이,\n시금치나물")
+            MealRow("아침", primaryColor, "밥, 된장국, 계란말이,\n시금치나물")
             Spacer(modifier = Modifier.height(16.dp))
-            MealRow(mealType = "점심", primaryColor = primaryColor, menu = "밥, 된장국, 닭가슴살볶음,\n나물무침")
+            MealRow("점심", primaryColor, "밥, 된장국, 닭가슴살볶음,\n나물무침")
             Spacer(modifier = Modifier.height(16.dp))
-            MealRow(mealType = "저녁", primaryColor = primaryColor, menu = "밥, 된장국, 두부조림,\n브로콜리무침")
+            MealRow("저녁", primaryColor, "밥, 된장국, 두부조림,\n브로콜리무침")
             Spacer(modifier = Modifier.height(16.dp))
-            MealRow(mealType = "간식", primaryColor = primaryColor, menu = "사과, 견과류")
-
+            MealRow("간식", primaryColor, "사과, 견과류")
             Spacer(modifier = Modifier.height(24.dp))
-
-            // 총 열량
-            Box(
-                modifier = Modifier.fillMaxWidth().background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Eco, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -1038,10 +677,7 @@ fun DailyDietCard(dayName: String, isCurrentPage: Boolean, primaryColor: Color) 
 @Composable
 fun MealRow(mealType: String, primaryColor: Color, menu: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // 음식 이미지 임시 박스
-        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFFF5F5F5)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray)
-        }
+        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFFF5F5F5)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray) }
         Spacer(modifier = Modifier.width(16.dp))
         Column {
             Text(mealType, color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1052,7 +688,7 @@ fun MealRow(mealType: String, primaryColor: Color, menu: String) {
 }
 
 // ==========================================
-// 4. 새로운 화면: 식단표 생성 4단계 (완료)
+// 4단계: 완료
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1071,32 +707,14 @@ fun GenerateStep4Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEd
             )
         },
         bottomBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-                    .padding(bottom = 8.dp) // 시스템 네비게이션 바 여백 고려
-            ) {
-                // 메인으로 가기 버튼
-                Button(
-                    onClick = onGoMainClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 8.dp)) {
+                Button(onClick = onGoMainClick, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Icon(Icons.Default.Home, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("메인으로 가기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                // 식단 수정하기 버튼
-                OutlinedButton(
-                    onClick = onEditClick,
-                    border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray),
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
+                OutlinedButton(onClick = onEditClick, border = BorderStroke(1.dp, Color(0xFFEEEEEE)), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray), modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("식단 수정하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -1104,111 +722,63 @@ fun GenerateStep4Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEd
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 4) // 4단계 완료 마일스톤 (모두 초록색 체크)
-
+            StepIndicator(currentStep = 4)
             Spacer(modifier = Modifier.height(48.dp))
-
-            // 1. 대형 완료 아이콘 (원형 겹침 디자인)
             Box(contentAlignment = Alignment.Center) {
-                // 가장 큰 옅은 원
                 Box(modifier = Modifier.size(140.dp).clip(CircleShape).background(Color(0xFFF1F8F1)))
-                // 중간 원
                 Box(modifier = Modifier.size(110.dp).clip(CircleShape).background(Color(0xFFE3F2E3)))
-                // 안쪽 흰색 원 + 그림자
                 Box(modifier = Modifier.size(80.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Check, contentDescription = "완료", tint = primaryGreen, modifier = Modifier.size(48.dp))
                 }
             }
-
             Spacer(modifier = Modifier.height(32.dp))
-
-            // 2. 타이틀 텍스트 (부분 색상 적용)
-
-
-                    Text(
-                        text = androidx.compose.ui.text.buildAnnotatedString {
-                            append("식단표 ")
-                            withStyle(style = SpanStyle(color = primaryGreen)) {
-                                append("저장 완료")
-                            }
-                        },
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
+            Text(
+                text = buildAnnotatedString {
+                    append("식단표 ")
+                    withStyle(style = SpanStyle(color = primaryGreen)) { append("저장 완료") }
+                },
+                fontSize = 28.sp, fontWeight = FontWeight.Bold
+            )
             Spacer(modifier = Modifier.height(12.dp))
             Text("이번주 식단이 내 식단표에 반영되었어요", fontSize = 15.sp, color = Color.DarkGray)
-
             Spacer(modifier = Modifier.height(40.dp))
-
-            // 3. Agent 요약 카드
             AgentFinalSummaryCard(primaryGreen)
-
             Spacer(modifier = Modifier.height(40.dp))
-
-            // 4. 하단 응원 문구
             Text("꾸준한 실천이 건강한 변화를 만듭니다.", fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(4.dp))
             Text("다음주에도 균형 잡힌 식단으로 함께해요!", fontSize = 13.sp, color = primaryGreen, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
-
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
-// --- 4단계 전용 UI 컴포넌트 ---
 @Composable
 fun AgentFinalSummaryCard(primaryColor: Color) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFBFBFB)),
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
-    ) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFBFBFB)), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)) {
         Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            // 왼쪽 3D 캐릭터 프로필 자리
-            Box(
-                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFEAEAEA)),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFEAEAEA)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(48.dp))
             }
-
             Spacer(modifier = Modifier.width(20.dp))
-
-            // 오른쪽 정보 영역
             Column(modifier = Modifier.weight(1f)) {
-                // 배지
                 Box(modifier = Modifier.background(Color(0xFFE8F5E9), RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Eco, contentDescription = null, tint = primaryColor, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("균형식 Agent 추천", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("실속 관리 Agent 추천", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
-
-                // 캘린더 아이콘 + 기간
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("이번주 월요일부터 금요일까지 적용", fontSize = 12.sp, color = Color.DarkGray)
                 }
-
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // 식기 아이콘 + 저장 일수
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1216,5 +786,131 @@ fun AgentFinalSummaryCard(primaryColor: Color) {
                 }
             }
         }
+    }
+}
+
+// ==========================================
+// ★ 새로운 화면: 레시피 메인 탭 (3xN 원형 그리드)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: () -> Unit) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    // 쓰지 않는 primaryGreen 변수 삭제 완료
+    val recipeList = listOf("된장찌개", "김치볶음밥", "계란말이", "제육볶음", "시금치무침", "두부조림", "오징어볶음", "감자채볶음", "소고기무국")
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = {
+            TopAppBar(title = { Text("레시피", fontWeight = FontWeight.Bold, fontSize = 20.sp) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor))
+        },
+        bottomBar = { BottomNavigationBar(navController, "recipe") }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            OutlinedTextField(
+                value = "", onValueChange = {}, placeholder = { Text("어떤 요리를 만들어볼까요?", color = Color.Gray, fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "검색", tint = Color.Gray) },
+                colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White, unfocusedBorderColor = Color(0xFFEEEEEE)),
+                shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()
+            ) {
+                items(recipeList.size) { index ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onNavigateToDetail() }) {
+                        Box(modifier = Modifier.size(90.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(36.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(recipeList[index], fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// ★ 새로운 화면: 레시피 상세 화면
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecipeDetailScreen(onBackClick: () -> Unit) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = {
+            TopAppBar(
+                title = { },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                actions = { IconButton(onClick = { }) { Icon(Icons.Default.BookmarkBorder, contentDescription = "저장") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { innerPadding ->
+        // ★ 여기에 innerPadding을 필수로 넣어주어야 합니다!
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
+            }
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("차돌박이 된장찌개", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Timer, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("20분", color = Color.Gray, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("350 kcal", color = Color.Gray, fontSize = 14.sp)
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+                Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        RecipeIngredientRow("차돌박이", "150g")
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
+                        RecipeIngredientRow("애호박", "1/2개")
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
+                        RecipeIngredientRow("두부", "반 모")
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
+                        RecipeIngredientRow("시판 된장", "2큰술")
+                    }
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+                Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                RecipeStepRow("1", "애호박과 두부를 먹기 좋은 크기로 깍둑썰기 해줍니다.", primaryGreen)
+                RecipeStepRow("2", "냄비에 차돌박이를 넣고 중불에서 겉면이 익을 때까지 볶아줍니다.", primaryGreen)
+                RecipeStepRow("3", "고기가 익으면 물 500ml를 넣고 된장을 풀어줍니다.", primaryGreen)
+                RecipeStepRow("4", "물이 끓어오르면 썰어둔 야채와 두부를 넣고 5분간 끓여 완성합니다.", primaryGreen)
+                Spacer(modifier = Modifier.height(40.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun RecipeIngredientRow(name: String, amount: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(name, fontSize = 15.sp, color = Color.DarkGray)
+        Text(amount, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+fun RecipeStepRow(stepNum: String, instruction: String, primaryColor: Color) {
+    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp), verticalAlignment = Alignment.Top) {
+        Box(modifier = Modifier.size(24.dp).background(primaryColor, CircleShape).padding(top = 2.dp), contentAlignment = Alignment.Center) {
+            Text(stepNum, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(instruction, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
