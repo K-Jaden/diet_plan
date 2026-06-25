@@ -386,37 +386,31 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 // (복사하실 때 기존 MainActivity.kt 맨 아래에 있던 MainScreen, TopHeaderSection, WeeklyGenerateCard 등의 코드는 그대로 두시면 됩니다!)
 
 // ==========================================
-// 3. 기존 메인 화면 (네비게이션 연동 위해 일부 수정됨)
+// 3. 기존 메인 화면 (가운데 + 버튼 삭제됨)
 // ==========================================
 @Composable
-fun MainScreen(onNavigateToGenerate: () -> Unit) { // 매개변수 추가됨!
+fun MainScreen(onNavigateToGenerate: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = backgroundColor,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToGenerate, // FAB 클릭 시 화면 이동
-                shape = CircleShape,
-                containerColor = primaryGreen,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "생성")
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Center,
+        // floatingActionButton (가운데 떠있는 + 버튼) 관련 코드 삭제!
         bottomBar = { BottomNavigationBar() }
     ) { innerPadding ->
         Column(
-            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             TopHeaderSection(primaryGreen)
             Spacer(modifier = Modifier.height(24.dp))
-            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate) // 버튼 클릭 시 화면 이동
+            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate) // 이 버튼을 누르면 화면이 넘어갑니다
             Spacer(modifier = Modifier.height(24.dp))
-            CalendarCard()
+            CalendarCard() // 아까 만든 캘린더
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
@@ -653,11 +647,31 @@ fun RowScope.IngredientItem(title: String, count: String, bgColor: Color) {
 @Composable
 fun BottomNavigationBar() {
     NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
-        NavigationBarItem(icon = { Icon(Icons.Default.Home, contentDescription = "홈") }, label = { Text("홈") }, selected = true, onClick = { })
-        NavigationBarItem(icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "식단") }, label = { Text("식단") }, selected = false, onClick = { })
-        NavigationBarItem(icon = { }, label = { }, selected = false, onClick = { }, enabled = false)
-        NavigationBarItem(icon = { Icon(Icons.Default.BarChart, contentDescription = "통계") }, label = { Text("통계") }, selected = false, onClick = { })
-        NavigationBarItem(icon = { Icon(Icons.Default.Person, contentDescription = "MY") }, label = { Text("MY") }, selected = false, onClick = { })
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.Home, contentDescription = "홈") },
+            label = { Text("홈") },
+            selected = true,
+            onClick = { }
+        )
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "식단") },
+            label = { Text("식단") },
+            selected = false,
+            onClick = { }
+        )
+        // 가운데 '생성' 버튼 자리를 비워두기 위해 썼던 투명 아이템 삭제!
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.BarChart, contentDescription = "통계") },
+            label = { Text("통계") },
+            selected = false,
+            onClick = { }
+        )
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
+            label = { Text("MY") },
+            selected = false,
+            onClick = { }
+        )
     }
 }
 
