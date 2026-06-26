@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -32,9 +33,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -65,10 +68,27 @@ fun AppNavigation() {
             )
         }
         composable("generate_step1") {
-            GenerateStep1Screen(onBackClick = { navController.popBackStack() }, onNextClick = { navController.navigate("generate_step2") })
+            GenerateStep1Screen(
+                onBackClick = { navController.popBackStack() },
+                // ★ 수정: 1단계에서 받은 hasIngredients 값을 2단계 라우터 주소에 붙여서 보냄
+                onNextClick = { hasIngredients ->
+                    navController.navigate("generate_step2/$hasIngredients")
+                }
+            )
         }
-        composable("generate_step2") {
-            GenerateStep2Screen(onBackClick = { navController.popBackStack() }, onNextClick = { navController.navigate("generate_step3") })
+        composable(
+            route = "generate_step2/{hasIngredients}",
+            arguments = listOf(navArgument("hasIngredients") { type = NavType.BoolType })
+        ) { backStackEntry ->
+            // 주소에서 true/false 값을 꺼냄 (기본값은 false)
+            val hasIngredients = backStackEntry.arguments?.getBoolean("hasIngredients") ?: false
+
+            // 꺼낸 값을 GenerateStep2Screen에 주입! 에러 해결!
+            GenerateStep2Screen(
+                hasIngredients = hasIngredients,
+                onBackClick = { navController.popBackStack() },
+                onNextClick = { navController.navigate("generate_step3") }
+            )
         }
         composable("generate_step3") {
             GenerateStep3Screen(onBackClick = { navController.popBackStack() }, onSaveClick = { navController.navigate("generate_step4") }, onRegenerateClick = { }, onChangeAgentClick = { navController.popBackStack() })
@@ -322,18 +342,25 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
     }
 }
 
-// ==========================================
-// 1단계: 재료 선택
+/// ==========================================
+// 1단계: 재료 선택 (UI 배치 및 알레르기 분리 완벽 적용)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
+fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+
+    // 상태 변수들
     var selectedOption by remember { mutableStateOf<String?>(null) }
     var textInput by remember { mutableStateOf("") }
     val myIngredients = remember { mutableStateListOf<String>() }
     val recommendedIngredients = listOf("계란", "양파", "대파", "마늘", "두부", "닭가슴살", "돼지고기", "감자")
+
+    // 알레르기/기피 음식 관련 상태 변수들
+    var dislikedInput by remember { mutableStateOf("") }
+    val dislikedIngredients = remember { mutableStateListOf<String>() }
+    val commonDisliked = listOf("오이", "가지", "고수", "버섯", "피망", "견과류", "갑각류", "복숭아", "우유", "밀가루")
 
     Scaffold(
         containerColor = backgroundColor,
@@ -347,7 +374,7 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
         },
         bottomBar = {
             Button(
-                onClick = onNextClick,
+                onClick = { onNextClick(selectedOption == "있음") },
                 enabled = selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty()),
                 colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFE0E0E0)),
                 shape = RoundedCornerShape(12.dp),
@@ -361,6 +388,7 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
             StepIndicator(currentStep = 1)
             Spacer(modifier = Modifier.height(32.dp))
+
             Box(modifier = Modifier.size(56.dp).background(Color(0xFFE8F5E9), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Eco, contentDescription = null, tint = primaryGreen, modifier = Modifier.size(32.dp))
             }
@@ -369,10 +397,16 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             Text("보유한 재료에 맞춰 맛있고 건강한 식단을 추천해드려요.", fontSize = 14.sp, color = Color.Gray)
             Spacer(modifier = Modifier.height(32.dp))
+
+            // [재료 있음 / 없음 선택 카드]
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 없음", description = "보유한 재료 없이\n식단을 추천받을래요.", isSelected = selectedOption == "없음", onClick = { selectedOption = "없음" }, primaryColor = primaryGreen)
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 있음", description = "가지고 있는 재료로\n식단을 추천받을래요.", isSelected = selectedOption == "있음", onClick = { selectedOption = "있음" }, primaryColor = primaryGreen)
             }
+
+            // ==========================================
+            // [영역 1] 재료 있음을 선택했을 때만 나오는 보유 재료 입력칸
+            // ==========================================
             if (selectedOption == "있음") {
                 Spacer(modifier = Modifier.height(32.dp))
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFEEEEEE))
@@ -380,6 +414,7 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
                     Text("어떤 재료가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(modifier = Modifier.height(12.dp))
+
                     OutlinedTextField(
                         value = textInput,
                         onValueChange = { textInput = it },
@@ -398,6 +433,8 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
                         singleLine = true
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    // 선택된 보유 재료
                     if (myIngredients.isNotEmpty()) {
                         Text("선택된 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -410,6 +447,8 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
+
+                    // 추천 보유 재료 태그
                     Text("자주 쓰는 추천 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Column {
@@ -421,6 +460,96 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
                                         shape = RoundedCornerShape(20.dp), color = if (isAlreadyAdded) Color(0xFFF0F0F0) else Color.White, border = BorderStroke(1.dp, if (isAlreadyAdded) Color.Transparent else Color(0xFFEEEEEE)),
                                         modifier = Modifier.clickable { if (!isAlreadyAdded) myIngredients.add(ingredient) }
                                     ) { Text(text = if (isAlreadyAdded) "$ingredient ✓" else "+ $ingredient", fontSize = 13.sp, color = if (isAlreadyAdded) Color.LightGray else Color.DarkGray, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // [영역 2] 항상 띄워주는 기피 음식 및 알레르기 입력칸 (if문 바깥으로 꺼냄)
+            // ==========================================
+            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFEEEEEE), thickness = 8.dp) // 시각적 분리를 위한 두꺼운 선
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.WarningAmber, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("못 먹는 음식이나 알레르기가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("식단 추천 시 해당 재료는 무조건 제외해 드려요.", fontSize = 13.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 1. 직접 입력창
+                OutlinedTextField(
+                    value = dislikedInput,
+                    onValueChange = { dislikedInput = it },
+                    placeholder = { Text("제외할 재료 입력 (예: 오이, 땅콩)", color = Color.LightGray, fontSize = 14.sp) },
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            if (dislikedInput.isNotBlank() && !dislikedIngredients.contains(dislikedInput.trim())) {
+                                dislikedIngredients.add(dislikedInput.trim())
+                                dislikedInput = ""
+                            }
+                        }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = Color(0xFFE53935)) }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFFE53935), unfocusedBorderColor = Color(0xFFEEEEEE), focusedContainerColor = Color.White, unfocusedContainerColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 2. 자주 제외하는 재료 태그
+                Text("자주 제외하는 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Column {
+                    commonDisliked.chunked(4).forEach { rowItems ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                            rowItems.forEach { ingredient ->
+                                val isAlreadyExcluded = dislikedIngredients.contains(ingredient)
+                                val dangerRed = Color(0xFFE53935)
+
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isAlreadyExcluded) Color(0xFFFFEBEE) else Color.White,
+                                    border = BorderStroke(1.dp, if (isAlreadyExcluded) Color.Transparent else Color(0xFFEEEEEE)),
+                                    modifier = Modifier.clickable {
+                                        if (!isAlreadyExcluded) dislikedIngredients.add(ingredient)
+                                    }
+                                ) {
+                                    Text(
+                                        text = if (isAlreadyExcluded) "$ingredient ✓" else "+ $ingredient",
+                                        fontSize = 13.sp,
+                                        color = if (isAlreadyExcluded) dangerRed else Color.DarkGray,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 3. 내가 고른 제외 재료 칩 목록 (입력되거나 태그를 눌렀을 때 나타남)
+                if (dislikedIngredients.isNotEmpty()) {
+                    Text("선택된 제외 재료", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column {
+                        dislikedIngredients.chunked(4).forEach { rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                rowItems.forEach { ingredient ->
+                                    InputTagChip(
+                                        name = ingredient,
+                                        onDelete = { dislikedIngredients.remove(ingredient) },
+                                        primaryColor = Color(0xFFE53935) // 빨간색 테마 유지
+                                    )
                                 }
                             }
                         }
@@ -462,14 +591,34 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 }
 
 // ==========================================
-// 2단계: 에이전트 선택
+// 2단계: 에이전트 분석 브리핑 및 선택 (수정됨)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep2Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
+fun GenerateStep2Screen(hasIngredients: Boolean, onBackClick: () -> Unit, onNextClick: () -> Unit) {
+
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+
+    // 상태 관리: 분석 중인지 여부와 선택된 에이전트
+    var isAnalyzing by remember { mutableStateOf(hasIngredients) }
     var selectedAgent by remember { mutableStateOf<String?>(null) }
+    var familyMemberCount by remember { mutableIntStateOf(3) }
+
+    // 나중에 팀원 D(AI 담당)가 채워줄 가짜 데이터 규격
+    val dummyBriefing = remember {
+        ChefBriefing(
+            ingredientsToAdd = listOf("대파", "양파"),
+            ingredientsToRemove = listOf("설탕", "나트륨"),
+            possibleDishes = listOf("두부계란국", "두부부침", "뚝배기계란찜")
+        )
+    }
+
+    // 2.5초 후 분석 완료 처리 (로딩 애니메이션 시뮬레이션)
+    LaunchedEffect(hasIngredients) {
+        kotlinx.coroutines.delay(2500)
+        isAnalyzing = false
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -482,35 +631,206 @@ fun GenerateStep2Screen(onBackClick: () -> Unit, onNextClick: () -> Unit) {
             )
         },
         bottomBar = {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("선택한 Agent는 언제든 변경할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = onNextClick, enabled = selectedAgent != null, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+            if (!isAnalyzing) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("선택한 Agent는 언제든 변경할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onNextClick,
+                        enabled = selectedAgent != null,
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                    ) {
+                        Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                    }
                 }
             }
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.Start
+        ) {
             Spacer(modifier = Modifier.height(16.dp))
             StepIndicator(currentStep = 2)
             Spacer(modifier = Modifier.height(40.dp))
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                Text("영양사 Agent를 선택하세요", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = Color.Gray)
-                Spacer(modifier = Modifier.height(32.dp))
-                AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
-                Spacer(modifier = Modifier.height(16.dp))
-                AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
-                Spacer(modifier = Modifier.height(16.dp))
-                AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
+
+            if (isAnalyzing) {
+                // ----------------------------------------
+                // [분석 중 로딩 화면]
+                // ----------------------------------------
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 80.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(color = primaryGreen)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text("👨‍🍳 요리사 에이전트가\n냉장고 재료를 분석 중입니다...", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 30.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("어떤 요리가 가능할지 고민하고 있어요!", fontSize = 14.sp, color = Color.Gray)
+                }
+            } else {
+                // ----------------------------------------
+                // [분석 완료: 브리핑 + 에이전트 선택 화면]
+                // ----------------------------------------
+                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    // 1. 요리사 에이전트 브리핑 카드
+                    if (hasIngredients) {
+                        ChefBriefingCard(dummyBriefing, primaryGreen)
+                        Spacer(modifier = Modifier.height(40.dp))
+                        Text("이 후보들로 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        // 재료가 없을 때 자연스럽게 이어지는 문구
+                        Text("👨‍🍳 보관 중인 재료가 없으시군요!", fontSize = 16.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("다양한 식재료를 활용해 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(40.dp))
+                    Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
+                    androidx.compose.animation.AnimatedVisibility(visible = selectedAgent == "패밀리케어") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 8.dp)
+                                .background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp))
+                                .border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("👨‍👩‍👧‍👦 식사 인원을 알려주세요", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("인원에 맞춰 양과 레시피를 조절할게요", fontSize = 11.sp, color = Color.Gray)
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // [-] 3명 [+] 형태의 스텝퍼(Stepper) 버튼
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = { if (familyMemberCount > 1) familyMemberCount-- },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color.White, CircleShape)
+                                        .border(1.dp, Color(0xFFEEEEEE), CircleShape)
+                                ) {
+                                    Icon(Icons.Default.Remove, contentDescription = "빼기", tint = if (familyMemberCount > 1) Color.Black else Color.LightGray)
+                                }
+
+                                Text(
+                                    "$familyMemberCount 명",
+                                    modifier = Modifier.padding(horizontal = 24.dp),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryGreen
+                                )
+
+                                IconButton(
+                                    onClick = { if (familyMemberCount < 10) familyMemberCount++ },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color.White, CircleShape)
+                                        .border(1.dp, Color(0xFFEEEEEE), CircleShape)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "더하기")
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
+
+                    Spacer(modifier = Modifier.height(40.dp))
+                }
             }
         }
+    }
+}
+
+// ==========================================
+// ★ 새로 추가할 데이터 클래스 및 UI 컴포넌트
+// (GenerateStep2Screen 아래 빈 공간에 붙여넣어 주세요)
+// ==========================================
+data class ChefBriefing(
+    val ingredientsToAdd: List<String>,
+    val ingredientsToRemove: List<String>,
+    val possibleDishes: List<String>
+)
+
+@Composable
+fun ChefBriefingCard(briefing: ChefBriefing, primaryColor: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBF9)),
+        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("👨‍🍳", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("요리사 Agent 분석 결과", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = primaryColor)
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 추가/제외 재료 칩
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                briefing.ingredientsToAdd.forEach { ingredient ->
+                    HintChip(text = "+ $ingredient", bgColor = Color(0xFFE8F5E9), textColor = primaryColor)
+                }
+                briefing.ingredientsToRemove.forEach { ingredient ->
+                    HintChip(text = "- $ingredient", bgColor = Color(0xFFFFEBEE), textColor = Color(0xFFD32F2F))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider(color = Color(0xFFEEEEEE))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 추천 요리 리스트
+            Text("추천 요리 후보군", fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = briefing.possibleDishes.joinToString(", "),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 24.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun HintChip(text: String, bgColor: Color, textColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor,
+        modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
     }
 }
 
