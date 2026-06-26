@@ -604,6 +604,9 @@ fun GenerateStep2Screen(hasIngredients: Boolean, onBackClick: () -> Unit, onNext
     var isAnalyzing by remember { mutableStateOf(hasIngredients) }
     var selectedAgent by remember { mutableStateOf<String?>(null) }
     var familyMemberCount by remember { mutableIntStateOf(3) }
+    var mealsPerDay by remember { mutableIntStateOf(3) } // 기본 3끼
+    var includeSnack by remember { mutableStateOf(false) } // 간식 포함 여부
+    var mealStyle by remember { mutableStateOf("골고루") } // 밥+국, 일품요리, 골고루
 
     // 나중에 팀원 D(AI 담당)가 채워줄 가짜 데이터 규격
     val dummyBriefing = remember {
@@ -683,6 +686,51 @@ fun GenerateStep2Screen(hasIngredients: Boolean, onBackClick: () -> Unit, onNext
                     if (hasIngredients) {
                         ChefBriefingCard(dummyBriefing, primaryGreen)
                         Spacer(modifier = Modifier.height(40.dp))
+                        // ==========================================
+                        // ★ 새로 추가되는 영역: 맞춤 식단 기본 설정
+                        // ==========================================
+                        Spacer(modifier = Modifier.height(32.dp))
+                        HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 8.dp)
+                        Spacer(modifier = Modifier.height(32.dp))
+
+                        Text("맞춤 식단 기본 설정", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // [1] 하루 식사 횟수
+                        Text("하루에 몇 끼를 드시나요?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "2끼 (점심/저녁)", isSelected = mealsPerDay == 2, onClick = { mealsPerDay = 2 }, primaryColor = primaryGreen)
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "3끼 (아침/점심/저녁)", isSelected = mealsPerDay == 3, onClick = { mealsPerDay = 3 }, primaryColor = primaryGreen)
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // [2] 간식 포함 여부 (체크박스 형태)
+                        Row(modifier = Modifier.fillMaxWidth().clickable { includeSnack = !includeSnack }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (includeSnack) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                                contentDescription = "간식 포함",
+                                tint = if (includeSnack) primaryGreen else Color.LightGray
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("식단에 가벼운 간식 포함하기", fontSize = 14.sp, color = if (includeSnack) Color.Black else Color.Gray)
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // [3] 식단 구성 스타일 (밥/국 vs 일품요리)
+                        Text("식단 구성 스타일", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "밥+국 필수", isSelected = mealStyle == "밥+국 필수", onClick = { mealStyle = "밥+국 필수" }, primaryColor = primaryGreen)
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "일품/간편식", isSelected = mealStyle == "일품/간편식", onClick = { mealStyle = "일품/간편식" }, primaryColor = primaryGreen)
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "골고루 섞어서", isSelected = mealStyle == "골고루", onClick = { mealStyle = "골고루" }, primaryColor = primaryGreen)
+                        }
+
+                        Spacer(modifier = Modifier.height(32.dp))
+                        HorizontalDivider(color = Color(0xFFEEEEEE))
+                        Spacer(modifier = Modifier.height(32.dp))
                         Text("이 후보들로 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     } else {
                         // 재료가 없을 때 자연스럽게 이어지는 문구
@@ -1232,5 +1280,28 @@ fun RecipeStepRow(stepNum: String, instruction: String, primaryColor: Color) {
         }
         Spacer(modifier = Modifier.width(12.dp))
         Text(instruction, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 2.dp))
+    }
+}@Composable
+fun SelectableOptionChip(
+    modifier: Modifier = Modifier,
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    primaryColor: Color
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) primaryColor.copy(alpha = 0.08f) else Color.White,
+        border = BorderStroke(1.dp, if (isSelected) primaryColor else Color(0xFFEEEEEE)),
+        modifier = modifier.clickable { onClick() }
+    ) {
+        Text(
+            text = text,
+            color = if (isSelected) primaryColor else Color.Gray,
+            fontSize = 13.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(vertical = 12.dp)
+        )
     }
 }
