@@ -58,18 +58,22 @@ class MainActivity : ComponentActivity() {
 }
 
 // ==========================================
-// 1. 네비게이션 라우터
+// 1. 네비게이션 라우터 (티켓 지갑 연동)
 // ==========================================
 @Composable
 fun AppNavigation() {
     val navController = androidx.navigation.compose.rememberNavController()
 
+    // ★ 앱 전체에서 공유할 '내 티켓 지갑' (테스트를 위해 기본 5장 지급)
+    var ticketCount by remember { mutableIntStateOf(5) }
+
     androidx.navigation.compose.NavHost(navController = navController, startDestination = "main") {
         composable("main") {
             MainScreen(
                 navController = navController,
+                ticketCount = ticketCount, // 지갑 잔액 전달
+                onTicketAdd = { added -> ticketCount += added }, // 충전 기능 전달
                 onNavigateToGenerate = { navController.navigate("generate_step1") },
-                // ★ 에러 해결의 핵심! 캘린더 화면으로 이동하는 명령을 여기서 주입합니다.
                 onNavigateToCalendar = { navController.navigate("calendar") }
             )
         }
@@ -86,8 +90,14 @@ fun AppNavigation() {
             val hasIngredients = backStackEntry.arguments?.getBoolean("hasIngredients") ?: false
             GenerateStep2Screen(
                 hasIngredients = hasIngredients,
+                ticketCount = ticketCount, // ★ 결제를 위해 잔액 확인
                 onBackClick = { navController.popBackStack() },
-                onNextClick = { navController.navigate("generate_step3") }
+                onNextClick = {
+                    if (ticketCount >= 3) {
+                        ticketCount -= 3
+                        navController.navigate("generate_step3")
+                    }
+                }
             )
         }
         composable("generate_step3") {
@@ -105,8 +115,6 @@ fun AppNavigation() {
         composable("recipe_detail") {
             RecipeDetailScreen(onBackClick = { navController.popBackStack() })
         }
-
-        // ★ 캘린더 상세 화면을 위한 라우터 추가
         composable("calendar") {
             CalendarScreen(navController = navController)
         }
@@ -144,40 +152,11 @@ fun StepIndicator(currentStep: Int) {
 }
 
 // ==========================================
-// 메인 화면 (파라미터 연결 완료)
+// 1. 상단 헤더 (티켓 개수 표시 및 클릭 기능 포함)
 // ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(
-    navController: androidx.navigation.NavController,
-    onNavigateToGenerate: () -> Unit,
-    onNavigateToCalendar: () -> Unit // ★ 이 파라미터가 정확히 있어야 합니다!
-) {
-    val backgroundColor = Color(0xFFFCFCFA)
-    val primaryGreen = Color(0xFF5A8754)
-
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = backgroundColor,
-        bottomBar = { BottomNavigationBar(navController, "main") }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
-            TopHeaderSection(primaryGreen)
-            Spacer(modifier = Modifier.height(24.dp))
-            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
-            Spacer(modifier = Modifier.height(24.dp))
-            // ★ 캘린더 카드를 부를 때 파라미터를 넘겨줍니다!
-            CalendarCard(onNavigateToCalendar = onNavigateToCalendar)
-            Spacer(modifier = Modifier.height(24.dp))
-            IngredientsCard()
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
-
-@Composable
-fun TopHeaderSection(primaryColor: Color) {
+fun TopHeaderSection(primaryColor: Color, ticketCount: Int, onTicketClick: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -187,9 +166,80 @@ fun TopHeaderSection(primaryColor: Color) {
             }
             Text(text = "건강한 하루, 균형 잡힌 식단", fontSize = 14.sp, color = Color.Gray)
         }
-        Row {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // ★ 클릭이 100% 작동하는 Surface
+            Surface(
+                onClick = onTicketClick,
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFFFFF8E1)
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎫", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "$ticketCount", fontWeight = FontWeight.Bold, color = Color(0xFFF57F17))
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
             IconButton(onClick = { }) { Icon(Icons.Default.Notifications, contentDescription = "알림") }
-            IconButton(onClick = { }) { Icon(Icons.Default.AccountCircle, contentDescription = "프로필", tint = primaryColor) }
+        }
+    }
+}
+
+// ==========================================
+// 2. 메인 화면 (티켓 팝업 로직 포함)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen(
+    navController: androidx.navigation.NavController,
+    ticketCount: Int,              // ★ 지갑 잔액 받아옴
+    onTicketAdd: (Int) -> Unit,    // ★ 충전 기능 받아옴
+    onNavigateToGenerate: () -> Unit,
+    onNavigateToCalendar: () -> Unit
+) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+
+    var showTicketSheet by remember { mutableStateOf(false) }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = backgroundColor,
+        bottomBar = { BottomNavigationBar(navController, "main") }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            TopHeaderSection(
+                primaryColor = primaryGreen,
+                ticketCount = ticketCount,
+                onTicketClick = { showTicketSheet = true }
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
+            Spacer(modifier = Modifier.height(24.dp))
+            CalendarCard(onNavigateToCalendar = onNavigateToCalendar)
+            Spacer(modifier = Modifier.height(24.dp))
+            IngredientsCard()
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    if (showTicketSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTicketSheet = false },
+            sheetState = sheetState,
+            containerColor = Color.White
+        ) {
+            TicketShopSheetContent(
+                primaryColor = primaryGreen,
+                onBuySuccess = { addedTickets ->
+                    onTicketAdd(addedTickets) // ★ 지갑에 돈 채우기
+                    showTicketSheet = false
+                }
+            )
         }
     }
 }
@@ -623,10 +673,11 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep2Screen(hasIngredients: Boolean, onBackClick: () -> Unit, onNextClick: () -> Unit) {
+fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: () -> Unit, onNextClick: () -> Unit) {
 
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+    val ticketCost = 3
 
     // 상태 관리: 분석 중인지 여부와 선택된 에이전트
     var isAnalyzing by remember { mutableStateOf(hasIngredients) }
@@ -635,6 +686,7 @@ fun GenerateStep2Screen(hasIngredients: Boolean, onBackClick: () -> Unit, onNext
     var mealsPerDay by remember { mutableIntStateOf(3) } // 기본 3끼
     var includeSnack by remember { mutableStateOf(false) } // 간식 포함 여부
     var mealStyle by remember { mutableStateOf("골고루") } // 밥+국, 일품요리, 골고루
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // 나중에 팀원 D(AI 담당)가 채워줄 가짜 데이터 규격
     val dummyBriefing = remember {
@@ -670,14 +722,29 @@ fun GenerateStep2Screen(hasIngredients: Boolean, onBackClick: () -> Unit, onNext
                         Text("선택한 Agent는 언제든 변경할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    val canAfford = ticketCount >= ticketCost
+
                     Button(
-                        onClick = onNextClick,
+                        onClick = {
+                            if (canAfford) {
+                                onNextClick()
+                            } else {
+                                // 티켓이 부족하면 다음으로 안 넘어가고 알림만 띄웁니다!
+                                android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        // 버튼은 에이전트만 고르면 항상 눌릴 수 있게 활성화해 둡니다.
                         enabled = selectedAgent != null,
                         colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) {
-                        Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                        if (canAfford) {
+                            Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                        } else {
+                            Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                        }
                     }
                 }
             }
@@ -1492,6 +1559,78 @@ fun CalendarScreen(navController: androidx.navigation.NavController) {
                     Text("해당 날짜에 등록된 식단이 없습니다.", color = Color.Gray, fontSize = 14.sp)
                 }
             }
+        }
+    }
+}
+@Composable
+fun TicketShopSheetContent(primaryColor: Color, onBuySuccess: (Int) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .padding(bottom = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("🎫", fontSize = 40.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("티켓 충전소", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("AI 에이전트 식단 생성을 위해 티켓이 필요해요.", fontSize = 14.sp, color = Color.Gray)
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // 1. 일반 결제 패키지
+        TicketPackageCard(
+            title = "베이직 패키지 (10장)",
+            price = "₩ 1,500",
+            description = "가장 인기 있는 기본 패키지",
+            iconColor = primaryColor,
+            onClick = { onBuySuccess(10) }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2. MetaMask 지갑 연동 결제 패키지 (스마트 컨트랙트용 껍데기)
+        TicketPackageCard(
+            title = "Web3 패키지 (30장)",
+            price = "0.002 ETH",
+            description = "MetaMask 지갑 연결 및 스마트 컨트랙트 결제",
+            iconColor = Color(0xFFF6851B), // 메타마스크 상징색 (여우 오렌지)
+            onClick = { onBuySuccess(30) }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 3. 광고 보고 무료 충전
+        TicketPackageCard(
+            title = "광고 보고 1장 받기",
+            price = "무료",
+            description = "짧은 영상 시청 후 즉시 지급",
+            iconColor = Color.Gray,
+            onClick = { onBuySuccess(1) }
+        )
+    }
+}
+
+@Composable
+fun TicketPackageCard(title: String, price: String, description: String, iconColor: Color, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFAFA)),
+        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = iconColor)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(description, fontSize = 12.sp, color = Color.Gray)
+            }
+            Text(price, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         }
     }
 }
