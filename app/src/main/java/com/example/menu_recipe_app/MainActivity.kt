@@ -25,7 +25,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -912,13 +914,25 @@ fun AgentCard(title: String, description: String, targetIcon: androidx.compose.u
 }
 
 // ==========================================
-// 3단계: 식단 확인
+// 3단계: 식단 확인 (요일별 선택 저장 기능 적용)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun GenerateStep3Screen(onBackClick: () -> Unit, onSaveClick: () -> Unit, onRegenerateClick: () -> Unit, onChangeAgentClick: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+
+    // ★ 새로 추가: 각 요일별 저장 체크 상태를 관리하는 리스트 (기본값은 7일 모두 선택(true))
+    val savedDaysState = remember { mutableStateListOf(*Array(7) { true }) }
+    val days = remember {
+        val baseDays = listOf("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
+        // LocalDate.now().dayOfWeek.value는 월요일(1) ~ 일요일(7)을 반환합니다. 인덱스는 0부터 시작하므로 1을 빼줍니다.
+        val todayIndex = java.time.LocalDate.now().dayOfWeek.value - 1
+
+        // 오늘부터 일요일까지의 배열 + 월요일부터 어제까지의 배열을 이어붙입니다.
+        // (예: 오늘이 수요일(인덱스 2)이면 -> [수, 목, 금, 토, 일] + [월, 화])
+        baseDays.subList(todayIndex, 7) + baseDays.subList(0, todayIndex)
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -932,10 +946,25 @@ fun GenerateStep3Screen(onBackClick: () -> Unit, onSaveClick: () -> Unit, onRege
         },
         bottomBar = {
             Column(modifier = Modifier.background(backgroundColor).padding(horizontal = 20.dp).padding(bottom = 24.dp, top = 8.dp)) {
-                Button(onClick = onSaveClick, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Icon(Icons.Default.BookmarkBorder, contentDescription = null, tint = Color.White)
+                Button(
+                    onClick = onSaveClick,
+                    // ★ 체크된 요일이 최소 하나 이상일 때만 하단 저장 버튼 활성화
+                    enabled = savedDaysState.any { it },
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Icon(Icons.Default.BookmarkBorder, contentDescription = null, tint = if (savedDaysState.any { it }) Color.White else Color.Gray)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("이 식단으로 저장", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+
+                    // ★ 선택된 요일 개수를 동적으로 텍스트에 반영
+                    val selectedCount = savedDaysState.count { it }
+                    Text(
+                        text = if (selectedCount == 7) "이 식단으로 저장" else "${selectedCount}개 요일 식단만 저장",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (savedDaysState.any { it }) Color.White else Color.Gray
+                    )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -954,7 +983,7 @@ fun GenerateStep3Screen(onBackClick: () -> Unit, onSaveClick: () -> Unit, onRege
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("저장된 식단은 언제든 수정하거나 다시 생성할 수 있어요.", fontSize = 11.sp, color = Color.Gray)
+                    Text("선택하여 체크된 요일만 내 식단표 및 DB에 기록됩니다.", fontSize = 11.sp, color = Color.Gray)
                 }
             }
         }
@@ -977,9 +1006,15 @@ fun GenerateStep3Screen(onBackClick: () -> Unit, onSaveClick: () -> Unit, onRege
             }
             Spacer(modifier = Modifier.height(16.dp))
             val pagerState = rememberPagerState(pageCount = { 7 })
-            val days = listOf("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
             HorizontalPager(state = pagerState, contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 16.dp) { page ->
-                DailyDietCard(dayName = days[page], isCurrentPage = pagerState.currentPage == page, primaryColor = primaryGreen)
+                // ★ DailyDietCard 호출부 수정: 저장 체크 값과 체크 상태가 변경될 때의 이벤트를 바인딩하여 넘겨줍니다.
+                DailyDietCard(
+                    dayName = days[page],
+                    isCurrentPage = pagerState.currentPage == page,
+                    primaryColor = primaryGreen,
+                    isSavedChecked = savedDaysState[page],
+                    onCheckedChange = { isChecked -> savedDaysState[page] = isChecked }
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -1014,28 +1049,73 @@ fun AgentSummaryCard(primaryColor: Color) {
     }
 }
 
+// ==========================================
+// 일별 식단 카드 컴포넌트 (체크박스 기능 내장)
+// ==========================================
 @Composable
-fun DailyDietCard(dayName: String, isCurrentPage: Boolean, primaryColor: Color) {
+fun DailyDietCard(
+    dayName: String,
+    isCurrentPage: Boolean,
+    primaryColor: Color,
+    isSavedChecked: Boolean,           // ★ 추가: 저장 활성화 여부 상태값
+    onCheckedChange: (Boolean) -> Unit // ★ 추가: 체크 상태 변경 콜백 함수
+) {
     val borderColor = if (isCurrentPage) primaryColor else Color(0xFFEEEEEE)
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(if (isCurrentPage) 1.5.dp else 1.dp, borderColor), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(if (isCurrentPage) 1.5.dp else 1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Box(modifier = Modifier.align(Alignment.CenterHorizontally).background(Color(0xFFF9F9F9), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp)) {
-                Text(dayName, fontWeight = FontWeight.Bold, color = if (isCurrentPage) primaryColor else Color.Gray, fontSize = 14.sp)
+            // 상단 영역을 가로 배치용 Box로 묶어 요일 이름은 중앙, 체크박스는 우측 끝에 정렬합니다.
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.background(Color(0xFFF9F9F9), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text(dayName, fontWeight = FontWeight.Bold, color = if (isCurrentPage) primaryColor else Color.Gray, fontSize = 14.sp)
+                }
+
+                // ★ 우측 상단 저장 체크박스 레이아웃
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .clickable { onCheckedChange(!isSavedChecked) },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isSavedChecked) "저장함" else "제외됨",
+                        fontSize = 11.sp,
+                        color = if (isSavedChecked) primaryColor else Color.LightGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Checkbox(
+                        checked = isSavedChecked,
+                        onCheckedChange = onCheckedChange,
+                        colors = CheckboxDefaults.colors(checkedColor = primaryColor, uncheckedColor = Color.LightGray),
+                        modifier = Modifier.scale(0.85f) // 체크박스 크기가 너무 크지 않게 0.85배로 줄임
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(24.dp))
-            MealRow("아침", primaryColor, "밥, 된장국, 계란말이,\n시금치나물")
-            Spacer(modifier = Modifier.height(16.dp))
-            MealRow("점심", primaryColor, "밥, 된장국, 닭가슴살볶음,\n나물무침")
-            Spacer(modifier = Modifier.height(16.dp))
-            MealRow("저녁", primaryColor, "밥, 된장국, 두부조림,\n브로콜리무침")
-            Spacer(modifier = Modifier.height(16.dp))
-            MealRow("간식", primaryColor, "사과, 견과류")
-            Spacer(modifier = Modifier.height(24.dp))
-            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Eco, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("총 열량 1,780 kcal", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.DarkGray)
+
+            // ★ 체크 해제 시 컴포넌트를 흐리게 보이도록 반투명도 설정 (해제 시 투명도 30%)
+            val contentAlpha = if (isSavedChecked) 1f else 0.3f
+
+            Column(modifier = Modifier.graphicsLayer(alpha = contentAlpha)) {
+                Spacer(modifier = Modifier.height(24.dp))
+                MealRow("아침", primaryColor, "밥, 된장국, 계란말이,\n시금치나물")
+                Spacer(modifier = Modifier.height(16.dp))
+                MealRow("점심", primaryColor, "밥, 된장국, 닭가슴살볶음,\n나물무침")
+                Spacer(modifier = Modifier.height(16.dp))
+                MealRow("저녁", primaryColor, "밥, 된장국, 두부조림,\n브로콜리무침")
+                Spacer(modifier = Modifier.height(16.dp))
+                MealRow("간식", primaryColor, "사과, 견과류")
+                Spacer(modifier = Modifier.height(24.dp))
+                Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFF9F9F9), RoundedCornerShape(8.dp)).padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Eco, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("총 열량 1,780 kcal", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.DarkGray)
+                    }
                 }
             }
         }
