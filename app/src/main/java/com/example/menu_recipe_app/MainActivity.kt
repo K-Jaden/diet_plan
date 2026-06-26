@@ -1008,8 +1008,10 @@ fun GenerateStep3Screen(onBackClick: () -> Unit, onSaveClick: () -> Unit, onRege
             val pagerState = rememberPagerState(pageCount = { 7 })
             HorizontalPager(state = pagerState, contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 16.dp) { page ->
                 // ★ DailyDietCard 호출부 수정: 저장 체크 값과 체크 상태가 변경될 때의 이벤트를 바인딩하여 넘겨줍니다.
+                val displayDayName = if (page == 0) "${days[page]} (오늘)" else days[page]
+
                 DailyDietCard(
-                    dayName = days[page],
+                    dayName = displayDayName,
                     isCurrentPage = pagerState.currentPage == page,
                     primaryColor = primaryGreen,
                     isSavedChecked = savedDaysState[page],
