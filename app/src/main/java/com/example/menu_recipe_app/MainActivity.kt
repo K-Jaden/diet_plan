@@ -42,6 +42,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import java.time.LocalDate
 import java.time.YearMonth
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,36 +58,32 @@ class MainActivity : ComponentActivity() {
 }
 
 // ==========================================
-// 1. 네비게이션 라우터 (레시피 탭 포함)
+// 1. 네비게이션 라우터
 // ==========================================
 @Composable
 fun AppNavigation() {
-    val navController = rememberNavController()
+    val navController = androidx.navigation.compose.rememberNavController()
 
-    NavHost(navController = navController, startDestination = "main") {
+    androidx.navigation.compose.NavHost(navController = navController, startDestination = "main") {
         composable("main") {
             MainScreen(
                 navController = navController,
-                onNavigateToGenerate = { navController.navigate("generate_step1") }
+                onNavigateToGenerate = { navController.navigate("generate_step1") },
+                // ★ 에러 해결의 핵심! 캘린더 화면으로 이동하는 명령을 여기서 주입합니다.
+                onNavigateToCalendar = { navController.navigate("calendar") }
             )
         }
         composable("generate_step1") {
             GenerateStep1Screen(
                 onBackClick = { navController.popBackStack() },
-                // ★ 수정: 1단계에서 받은 hasIngredients 값을 2단계 라우터 주소에 붙여서 보냄
-                onNextClick = { hasIngredients ->
-                    navController.navigate("generate_step2/$hasIngredients")
-                }
+                onNextClick = { hasIngredients -> navController.navigate("generate_step2/$hasIngredients") }
             )
         }
         composable(
             route = "generate_step2/{hasIngredients}",
-            arguments = listOf(navArgument("hasIngredients") { type = NavType.BoolType })
+            arguments = listOf(androidx.navigation.navArgument("hasIngredients") { type = androidx.navigation.NavType.BoolType })
         ) { backStackEntry ->
-            // 주소에서 true/false 값을 꺼냄 (기본값은 false)
             val hasIngredients = backStackEntry.arguments?.getBoolean("hasIngredients") ?: false
-
-            // 꺼낸 값을 GenerateStep2Screen에 주입! 에러 해결!
             GenerateStep2Screen(
                 hasIngredients = hasIngredients,
                 onBackClick = { navController.popBackStack() },
@@ -106,6 +104,11 @@ fun AppNavigation() {
         }
         composable("recipe_detail") {
             RecipeDetailScreen(onBackClick = { navController.popBackStack() })
+        }
+
+        // ★ 캘린더 상세 화면을 위한 라우터 추가
+        composable("calendar") {
+            CalendarScreen(navController = navController)
         }
     }
 }
@@ -141,10 +144,14 @@ fun StepIndicator(currentStep: Int) {
 }
 
 // ==========================================
-// 메인 화면
+// 메인 화면 (파라미터 연결 완료)
 // ==========================================
 @Composable
-fun MainScreen(navController: androidx.navigation.NavController, onNavigateToGenerate: () -> Unit) {
+fun MainScreen(
+    navController: androidx.navigation.NavController,
+    onNavigateToGenerate: () -> Unit,
+    onNavigateToCalendar: () -> Unit // ★ 이 파라미터가 정확히 있어야 합니다!
+) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
 
@@ -160,7 +167,8 @@ fun MainScreen(navController: androidx.navigation.NavController, onNavigateToGen
             Spacer(modifier = Modifier.height(24.dp))
             WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
             Spacer(modifier = Modifier.height(24.dp))
-            CalendarCard()
+            // ★ 캘린더 카드를 부를 때 파라미터를 넘겨줍니다!
+            CalendarCard(onNavigateToCalendar = onNavigateToCalendar)
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
@@ -203,19 +211,30 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
     }
 }
 
+// ==========================================
+// 캘린더 카드 컴포넌트 (더보기 버튼 추가 완료)
+// ==========================================
 @Composable
-fun CalendarCard() {
+fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 뚫기 완료!
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     val primaryGreen = Color(0xFF5A8754)
 
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // [상단 영역] 제목 & 더보기 버튼 & 화살표
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "더보기 >",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.clickable { onNavigateToCalendar() }.padding(4.dp)
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }, modifier = Modifier.size(24.dp)) {
@@ -228,6 +247,8 @@ fun CalendarCard() {
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
+
+            // [범례] 식단 계획 / 기록
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
                 Spacer(modifier = Modifier.width(4.dp))
@@ -238,6 +259,8 @@ fun CalendarCard() {
                 Text("기록", fontSize = 10.sp, color = Color.Gray)
             }
             Spacer(modifier = Modifier.height(16.dp))
+
+            // [요일 표시]
             val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                 daysOfWeek.forEachIndexed { index, day ->
@@ -246,6 +269,8 @@ fun CalendarCard() {
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
+
+            // [달력 그리드 날짜 배치]
             val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
             val daysInMonth = currentMonth.lengthOfMonth()
             val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
@@ -323,10 +348,11 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
             colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
-            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "식단") }, // List 대신 FormatListBulleted 사용
-            label = { Text("식단") },
-            selected = currentRoute == "diet",
-            onClick = { }
+            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "캘린더") },
+            label = { Text("캘린더") },
+            selected = currentRoute == "calendar",
+            onClick = { if (currentRoute != "calendar") navController.navigate("calendar") { popUpTo("main") { saveState = true } } },
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "레시피") }, // 신형 MenuBook 아이콘 적용
@@ -1239,15 +1265,34 @@ fun AgentFinalSummaryCard(primaryColor: Color) {
     }
 }
 
+// ★ 코드 관리를 위해 레시피 데이터 구조를 상단에 정의합니다.
+data class SimpleRecipe(
+    val name: String,
+    val imageUrl: String
+)
+
 // ==========================================
-// ★ 새로운 화면: 레시피 메인 탭 (3xN 원형 그리드)
+// ★ 새로운 화면: 레시피 메인 탭 (사진 추가 버전)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
-    // 쓰지 않는 primaryGreen 변수 삭제 완료
-    val recipeList = listOf("된장찌개", "김치볶음밥", "계란말이", "제육볶음", "시금치무침", "두부조림", "오징어볶음", "감자채볶음", "소고기무국")
+
+    // ★ 텍스트 리스트에서 이미지 URL을 포함한 객체 리스트로 업그레이드
+    val recipeList = remember {
+        listOf(
+            SimpleRecipe("된장찌개", "https://loremflickr.com/300/300/korean,stew"),
+            SimpleRecipe("김치볶음밥", "https://loremflickr.com/300/300/friedrice"),
+            SimpleRecipe("계란말이", "https://loremflickr.com/300/300/omelet"),
+            SimpleRecipe("제육볶음", "https://loremflickr.com/300/300/spicypork"),
+            SimpleRecipe("시금치무침", "https://loremflickr.com/300/300/spinach"),
+            SimpleRecipe("두부조림", "https://loremflickr.com/300/300/tofu"),
+            SimpleRecipe("오징어볶음", "https://loremflickr.com/300/300/squid"),
+            SimpleRecipe("감자채볶음", "https://loremflickr.com/300/300/potato"),
+            SimpleRecipe("소고기무국", "https://loremflickr.com/300/300/soup")
+        )
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1269,12 +1314,22 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()
             ) {
                 items(recipeList.size) { index ->
+                    val recipe = recipeList[index]
+
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onNavigateToDetail() }) {
-                        Box(modifier = Modifier.size(90.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(36.dp))
-                        }
+                        // ★ 기존의 회색 Icon 구조를 Coil 이미지 컴포넌트로 전격 교체!
+                        // 프로젝트 세팅 환경(Coil2 또는 Coil3)에 맞춰 알맞은 패키지로 로드됩니다.
+                        AsyncImage(
+                            model = recipe.imageUrl,
+                            contentDescription = recipe.name,
+                            modifier = Modifier
+                                .size(90.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF0F0F0)),
+                            contentScale = ContentScale.Crop
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(recipeList[index], fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                        Text(recipe.name, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -1385,5 +1440,58 @@ fun SelectableOptionChip(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 12.dp)
         )
+    }
+}
+// ==========================================
+// ★ 새로운 화면: 상세 캘린더 탭
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CalendarScreen(navController: androidx.navigation.NavController) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = {
+            TopAppBar(
+                title = { Text("식단 캘린더", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        },
+        bottomBar = { BottomNavigationBar(navController, "calendar") }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp)
+        ) {
+            // ★ 에러 해결: 상세 캘린더 화면 안에서는 '더보기'를 눌러도 아무 일도 안 일어나게 빈 괄호 {} 를 넘깁니다.
+            CalendarCard(onNavigateToCalendar = {})
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 임시로 보여줄 빈 상태(Empty State) UI
+            Card(
+                modifier = Modifier.fillMaxWidth().height(150.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("해당 날짜에 등록된 식단이 없습니다.", color = Color.Gray, fontSize = 14.sp)
+                }
+            }
+        }
     }
 }
