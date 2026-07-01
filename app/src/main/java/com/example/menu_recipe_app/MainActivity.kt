@@ -58,14 +58,16 @@ class MainActivity : ComponentActivity() {
 }
 
 // ==========================================
-// 1. 네비게이션 라우터 (티켓 지갑 연동)
+// 1. 네비게이션 라우터 (로그인 및 칼로리 상태 연동)
 // ==========================================
 @Composable
 fun AppNavigation() {
     val navController = androidx.navigation.compose.rememberNavController()
 
-    // ★ 앱 전체에서 공유할 '내 티켓 지갑'
+    // ★ 전역 상태 관리
     var ticketCount by remember { mutableIntStateOf(5) }
+    var isLoggedIn by remember { mutableStateOf(false) }
+    var userCalories by remember { mutableStateOf<Int?>(null) } // ★ 계산된 하루 권장 칼로리
 
     androidx.navigation.compose.NavHost(navController = navController, startDestination = "main") {
         composable("main") {
@@ -91,6 +93,7 @@ fun AppNavigation() {
             GenerateStep2Screen(
                 hasIngredients = hasIngredients,
                 ticketCount = ticketCount,
+                userCalories = userCalories, // ★ 2단계로 칼로리 정보 전달
                 onBackClick = { navController.popBackStack() },
                 onNextClick = {
                     if (ticketCount >= 3) {
@@ -102,8 +105,8 @@ fun AppNavigation() {
         }
         composable("generate_step3") {
             GenerateStep3Screen(
-                ticketCount = ticketCount,                               // ★ 3단계로 지갑 잔액 전달
-                onDeductTicket = { amount -> ticketCount -= amount },    // ★ 3단계에서 쓸 결제 모듈 전달
+                ticketCount = ticketCount,
+                onDeductTicket = { amount -> ticketCount -= amount },
                 onBackClick = { navController.popBackStack() },
                 onSaveClick = { navController.navigate("generate_step4") },
                 onChangeAgentClick = { navController.popBackStack() }
@@ -123,6 +126,20 @@ fun AppNavigation() {
         }
         composable("calendar") {
             CalendarScreen(navController = navController)
+        }
+        composable("my") {
+            MyPageScreen(
+                navController = navController,
+                isLoggedIn = isLoggedIn,
+                ticketCount = ticketCount,
+                userCalories = userCalories, // ★ 마이페이지로 칼로리 전달
+                onLoginClick = { isLoggedIn = true },
+                onLogoutClick = {
+                    isLoggedIn = false
+                    userCalories = null // 로그아웃 시 칼로리 정보 초기화
+                },
+                onCaloriesCalculated = { calculated -> userCalories = calculated } // ★ 계산 완료 시 상태 업데이트
+            )
         }
     }
 }
@@ -411,17 +428,19 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
             colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
-            icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "레시피") }, // 신형 MenuBook 아이콘 적용
+            icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "레시피") },
             label = { Text("레시피") },
             selected = currentRoute == "recipe",
             onClick = { if (currentRoute != "recipe") navController.navigate("recipe") { popUpTo("main") { saveState = true } } },
             colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
+        // ★ 수정된 부분: MY 탭에도 이동 경로와 색상 효과를 넣어주었습니다!
         NavigationBarItem(
             icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
             label = { Text("MY") },
             selected = currentRoute == "my",
-            onClick = { }
+            onClick = { if (currentRoute != "my") navController.navigate("my") { popUpTo("main") { saveState = true } } },
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
     }
 }
@@ -675,26 +694,23 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 }
 
 // ==========================================
-// 2단계: 에이전트 분석 브리핑 및 선택 (수정됨)
+// 2단계: 에이전트 분석 브리핑 및 선택 (맞춤 칼로리 반영)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: () -> Unit, onNextClick: () -> Unit) {
-
+fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, userCalories: Int?, onBackClick: () -> Unit, onNextClick: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
     val ticketCost = 3
 
-    // 상태 관리: 분석 중인지 여부와 선택된 에이전트
     var isAnalyzing by remember { mutableStateOf(hasIngredients) }
     var selectedAgent by remember { mutableStateOf<String?>(null) }
     var familyMemberCount by remember { mutableIntStateOf(3) }
-    var mealsPerDay by remember { mutableIntStateOf(3) } // 기본 3끼
-    var includeSnack by remember { mutableStateOf(false) } // 간식 포함 여부
-    var mealStyle by remember { mutableStateOf("골고루") } // 밥+국, 일품요리, 골고루
+    var mealsPerDay by remember { mutableIntStateOf(3) }
+    var includeSnack by remember { mutableStateOf(false) }
+    var mealStyle by remember { mutableStateOf("골고루") }
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // 나중에 팀원 D(AI 담당)가 채워줄 가짜 데이터 규격
     val dummyBriefing = remember {
         ChefBriefing(
             ingredientsToAdd = listOf("대파", "양파"),
@@ -703,7 +719,6 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: 
         )
     }
 
-    // 2.5초 후 분석 완료 처리 (로딩 애니메이션 시뮬레이션)
     LaunchedEffect(hasIngredients) {
         kotlinx.coroutines.delay(2500)
         isAnalyzing = false
@@ -711,85 +726,65 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: 
 
     Scaffold(
         containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
-                actions = { Spacer(modifier = Modifier.width(48.dp)) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
-            )
-        },
+        topBar = { TopAppBar(title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) }, navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } }, actions = { Spacer(modifier = Modifier.width(48.dp)) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
         bottomBar = {
             if (!isAnalyzing) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("선택한 Agent는 언제든 변경할 수 있어요.", color = Color.Gray, fontSize = 12.sp)
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-
                     val canAfford = ticketCount >= ticketCost
-
                     Button(
                         onClick = {
-                            if (canAfford) {
-                                onNextClick()
-                            } else {
-                                // 티켓이 부족하면 다음으로 안 넘어가고 알림만 띄웁니다!
-                                android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                            if (canAfford) onNextClick()
+                            else android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
                         },
-                        // 버튼은 에이전트만 고르면 항상 눌릴 수 있게 활성화해 둡니다.
                         enabled = selectedAgent != null,
                         colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) {
-                        if (canAfford) {
-                            Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
-                        } else {
-                            Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                        }
+                        if (canAfford) Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                        else Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                     }
                 }
             }
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.Start
-        ) {
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
             Spacer(modifier = Modifier.height(16.dp))
             StepIndicator(currentStep = 2)
             Spacer(modifier = Modifier.height(40.dp))
 
             if (isAnalyzing) {
-                // ----------------------------------------
-                // [분석 중 로딩 화면]
-                // ----------------------------------------
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 80.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = primaryGreen)
                     Spacer(modifier = Modifier.height(24.dp))
-                    Text("👨‍🍳 요리사 에이전트가\n냉장고 재료를 분석 중입니다...", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 30.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("어떤 요리가 가능할지 고민하고 있어요!", fontSize = 14.sp, color = Color.Gray)
+                    Text("👨‍🍳 요리사 에이전트가\n맞춤 식단을 분석 중입니다...", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 30.sp)
                 }
             } else {
-                // ----------------------------------------
-                // [분석 완료: 브리핑 + 에이전트 선택 화면]
-                // ----------------------------------------
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                    // 1. 요리사 에이전트 브리핑 카드
+                    // ★ 마이페이지에서 계산한 신체정보/칼로리가 있을 경우 영양사 에이전트가 브리핑해줌
+                    if (userCalories != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF4F9F4),
+                            border = BorderStroke(1.dp, primaryGreen.copy(alpha=0.3f)),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                        ) {
+                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("🩺", fontSize = 28.sp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("영양사 Agent 브리핑", fontSize = 12.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("입력된 신체 정보 기준 권장 섭취량은\n하루 ${userCalories} kcal 입니다.", fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 20.sp)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("이 칼로리 기준에 맞춰 식단을 짤게요!", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+
                     if (hasIngredients) {
                         ChefBriefingCard(dummyBriefing, primaryGreen)
-                        Spacer(modifier = Modifier.height(40.dp))
-                        // ==========================================
-                        // ★ 새로 추가되는 영역: 맞춤 식단 기본 설정
-                        // ==========================================
                         Spacer(modifier = Modifier.height(32.dp))
                         HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 8.dp)
                         Spacer(modifier = Modifier.height(32.dp))
@@ -797,30 +792,21 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: 
                         Text("맞춤 식단 기본 설정", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // [1] 하루 식사 횟수
                         Text("하루에 몇 끼를 드시나요?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             SelectableOptionChip(modifier = Modifier.weight(1f), text = "2끼 (점심/저녁)", isSelected = mealsPerDay == 2, onClick = { mealsPerDay = 2 }, primaryColor = primaryGreen)
                             SelectableOptionChip(modifier = Modifier.weight(1f), text = "3끼 (아침/점심/저녁)", isSelected = mealsPerDay == 3, onClick = { mealsPerDay = 3 }, primaryColor = primaryGreen)
                         }
-
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // [2] 간식 포함 여부 (체크박스 형태)
                         Row(modifier = Modifier.fillMaxWidth().clickable { includeSnack = !includeSnack }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (includeSnack) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                                contentDescription = "간식 포함",
-                                tint = if (includeSnack) primaryGreen else Color.LightGray
-                            )
+                            Icon(imageVector = if (includeSnack) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, contentDescription = null, tint = if (includeSnack) primaryGreen else Color.LightGray)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("식단에 가벼운 간식 포함하기", fontSize = 14.sp, color = if (includeSnack) Color.Black else Color.Gray)
                         }
-
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // [3] 식단 구성 스타일 (밥/국 vs 일품요리)
                         Text("식단 구성 스타일", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -834,7 +820,6 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: 
                         Spacer(modifier = Modifier.height(32.dp))
                         Text("이 후보들로 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     } else {
-                        // 재료가 없을 때 자연스럽게 이어지는 문구
                         Text("👨‍🍳 보관 중인 재료가 없으시군요!", fontSize = 16.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("다양한 식재료를 활용해 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -848,64 +833,23 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: 
                     Spacer(modifier = Modifier.height(16.dp))
                     AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
                     androidx.compose.animation.AnimatedVisibility(visible = selectedAgent == "패밀리케어") {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 8.dp)
-                                .background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp))
-                                .border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                                .padding(16.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp)).border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp)).padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("👨‍👩‍👧‍👦 식사 인원을 알려주세요", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Text("인원에 맞춰 양과 레시피를 조절할게요", fontSize = 11.sp, color = Color.Gray)
                             }
-
                             Spacer(modifier = Modifier.height(16.dp))
-
-                            // [-] 3명 [+] 형태의 스텝퍼(Stepper) 버튼
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(
-                                    onClick = { if (familyMemberCount > 1) familyMemberCount-- },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(Color.White, CircleShape)
-                                        .border(1.dp, Color(0xFFEEEEEE), CircleShape)
-                                ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { if (familyMemberCount > 1) familyMemberCount-- }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, Color(0xFFEEEEEE), CircleShape)) {
                                     Icon(Icons.Default.Remove, contentDescription = "빼기", tint = if (familyMemberCount > 1) Color.Black else Color.LightGray)
                                 }
-
-                                Text(
-                                    "$familyMemberCount 명",
-                                    modifier = Modifier.padding(horizontal = 24.dp),
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = primaryGreen
-                                )
-
-                                IconButton(
-                                    onClick = { if (familyMemberCount < 10) familyMemberCount++ },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(Color.White, CircleShape)
-                                        .border(1.dp, Color(0xFFEEEEEE), CircleShape)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "더하기")
-                                }
+                                Text("$familyMemberCount 명", modifier = Modifier.padding(horizontal = 24.dp), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
+                                IconButton(onClick = { if (familyMemberCount < 10) familyMemberCount++ }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, Color(0xFFEEEEEE), CircleShape)) { Icon(Icons.Default.Add, contentDescription = "더하기") }
                             }
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
-
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
@@ -915,7 +859,6 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, onBackClick: 
 
 // ==========================================
 // ★ 새로 추가할 데이터 클래스 및 UI 컴포넌트
-// (GenerateStep2Screen 아래 빈 공간에 붙여넣어 주세요)
 // ==========================================
 data class ChefBriefing(
     val ingredientsToAdd: List<String>,
@@ -1098,7 +1041,7 @@ fun GenerateStep3Screen(
                         OutlinedButton(onClick = onChangeAgentClick, border = BorderStroke(1.dp, Color(0xFFEEEEEE)), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color.DarkGray), modifier = Modifier.weight(1f).height(50.dp)) {
                             Icon(Icons.Default.PersonOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("다른 Agent 선택", fontSize = 13.sp)
+                            Text("다른 영양사 선택", fontSize = 13.sp)
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1724,6 +1667,222 @@ fun TicketPackageCard(title: String, price: String, description: String, iconCol
                 Text(description, fontSize = 12.sp, color = Color.Gray)
             }
             Text(price, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        }
+    }
+}
+
+// ==========================================
+// ★ 새로운 화면: 마이페이지 (신체 정보 입력 기능 추가)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MyPageScreen(
+    navController: androidx.navigation.NavController,
+    isLoggedIn: Boolean,
+    ticketCount: Int,
+    userCalories: Int?,
+    onLoginClick: () -> Unit,
+    onLogoutClick: () -> Unit,
+    onCaloriesCalculated: (Int) -> Unit
+) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+
+    // 신체 정보 입력 팝업 상태
+    var showBodyInfoDialog by remember { mutableStateOf(false) }
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = { TopAppBar(title = { Text("마이페이지", fontWeight = FontWeight.Bold, fontSize = 20.sp) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
+        bottomBar = { BottomNavigationBar(navController, "my") }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                if (isLoggedIn) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(Color(0xFFE8F5E9)), contentAlignment = Alignment.Center) {
+                            Text("👨‍💻", fontSize = 32.sp)
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("개발자님, 환영합니다!", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("dev@startup.com", fontSize = 13.sp, color = Color.Gray)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 티켓 박스
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFFAFAFA), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🎫", fontSize = 20.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("내 보유 티켓", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                            Text("${ticketCount}장", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // ★ 나의 하루 권장 칼로리 박스
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFF4F9F4), border = BorderStroke(1.dp, primaryGreen.copy(alpha=0.3f)), modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column {
+                                Text("🔥 나의 맞춤 권장 칼로리", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                if (userCalories != null) {
+                                    Text("${userCalories} kcal", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                                } else {
+                                    Text("신체 정보를 입력해주세요", fontSize = 13.sp, color = Color.Gray)
+                                }
+                            }
+                            Button(onClick = { showBodyInfoDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(8.dp)) {
+                                Text(if (userCalories != null) "수정" else "입력", fontSize = 13.sp)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedButton(onClick = onLogoutClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color(0xFFEEEEEE))) {
+                        Text("로그아웃", color = Color.Gray)
+                    }
+
+                } else {
+                    // 로그아웃 상태 UI
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp)) }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("로그인이 필요합니다", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("로그인하고 맞춤 식단을 관리해보세요!", fontSize = 13.sp, color = Color.Gray)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = onLoginClick, modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(12.dp)) { Text("로그인 / 회원가입", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFF5F5F5), thickness = 8.dp)
+
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                Text("설정 및 안내", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                MyPageMenuItem(icon = Icons.Default.Campaign, title = "공지사항", onClick = {})
+                MyPageMenuItem(icon = Icons.Default.HeadsetMic, title = "고객센터 / 피드백", onClick = {})
+                MyPageMenuItem(icon = Icons.Default.Settings, title = "앱 설정", onClick = {})
+                if (isLoggedIn) {
+                    MyPageMenuItem(icon = Icons.Default.CreditCard, title = "결제 내역", onClick = {})
+                    MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = {}, isDanger = true)
+                }
+            }
+        }
+    }
+
+    // 신체 정보 입력 다이얼로그
+    if (showBodyInfoDialog) {
+        BodyInfoDialog(
+            primaryColor = primaryGreen,
+            onDismiss = { showBodyInfoDialog = false },
+            onCalculate = { calories ->
+                onCaloriesCalculated(calories)
+                showBodyInfoDialog = false
+            }
+        )
+    }
+}
+
+// ★ 신체 정보 입력 및 칼로리 계산 컴포넌트
+@Composable
+fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int) -> Unit) {
+    var gender by remember { mutableStateOf("남성") }
+    var age by remember { mutableStateOf("") }
+    var height by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 가벼운 활동
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = { Text("신체 정보 설정", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("정확한 맞춤 식단을 위해 신체 정보를 입력해주세요.", fontSize = 13.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("성별", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)) {
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "남성", isSelected = gender == "남성", onClick = { gender = "남성" }, primaryColor = primaryColor)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "여성", isSelected = gender == "여성", onClick = { gender = "여성" }, primaryColor = primaryColor)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = age, onValueChange = { age = it }, label = { Text("나이") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
+                    )
+                    OutlinedTextField(
+                        value = height, onValueChange = { height = it }, label = { Text("키 (cm)") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = weight, onValueChange = { weight = it }, label = { Text("몸무게 (kg)") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("평소 활동량", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "앉아있는 시간이 많음 (운동 거의 안함)", isSelected = activityLevel == 1.2, onClick = { activityLevel = 1.2 }, primaryColor = primaryColor)
+                    SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "보통 (주 1~3회 가벼운 운동)", isSelected = activityLevel == 1.375, onClick = { activityLevel = 1.375 }, primaryColor = primaryColor)
+                    SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "활동적 (주 3~5회 운동)", isSelected = activityLevel == 1.55, onClick = { activityLevel = 1.55 }, primaryColor = primaryColor)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val a = age.toIntOrNull() ?: 0
+                    val h = height.toDoubleOrNull() ?: 0.0
+                    val w = weight.toDoubleOrNull() ?: 0.0
+                    if (a > 0 && h > 0 && w > 0) {
+                        // Mifflin-St Jeor 기초대사량 계산식 (보다 최신/정확한 공식)
+                        val bmr = if (gender == "남성") (10 * w) + (6.25 * h) - (5 * a) + 5 else (10 * w) + (6.25 * h) - (5 * a) - 161
+                        val tdee = (bmr * activityLevel).toInt() // 활동 대사량(TDEE) 계산
+                        onCalculate(tdee)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
+            ) { Text("계산 완료", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("취소", color = Color.Gray) }
+        }
+    )
+}
+
+@Composable
+fun MyPageMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, onClick: () -> Unit, isDanger: Boolean = false) {
+    val tintColor = if (isDanger) Color(0xFFE53935) else Color.DarkGray
+
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = tintColor, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(title, fontSize = 15.sp, color = tintColor, fontWeight = if (isDanger) FontWeight.Medium else FontWeight.Normal)
+        }
+        if (!isDanger) {
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(20.dp))
         }
     }
 }
