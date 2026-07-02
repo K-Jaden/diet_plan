@@ -1648,14 +1648,15 @@ fun MyPageScreen(
     }
 }
 
-// ★ 신체 정보 입력 및 칼로리 계산 컴포넌트
+// ★ 신체 정보 입력 및 칼로리 계산 컴포넌트 (식단 목표 및 맞춤 칼로리 로직 추가)
 @Composable
 fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int) -> Unit) {
     var gender by remember { mutableStateOf("남성") }
     var age by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 가벼운 활동
+    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 보통(가벼운 활동)
+    var goal by remember { mutableStateOf("체중 유지") } // ★ 식단 목표 상태 추가
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1699,6 +1700,17 @@ fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int
                     SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "보통 (주 1~3회 가벼운 운동)", isSelected = activityLevel == 1.375, onClick = { activityLevel = 1.375 }, primaryColor = primaryColor)
                     SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "활동적 (주 3~5회 운동)", isSelected = activityLevel == 1.55, onClick = { activityLevel = 1.55 }, primaryColor = primaryColor)
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // ★ 식단 목표 UI 추가
+                Text("식단 목표", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "다이어트\n(-500kcal)", isSelected = goal == "다이어트", onClick = { goal = "다이어트" }, primaryColor = primaryColor)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "체중 유지\n(기본량)", isSelected = goal == "체중 유지", onClick = { goal = "체중 유지" }, primaryColor = primaryColor)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "벌크업\n(+300kcal)", isSelected = goal == "벌크업", onClick = { goal = "벌크업" }, primaryColor = primaryColor)
+                }
             }
         },
         confirmButton = {
@@ -1708,10 +1720,25 @@ fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int
                     val h = height.toDoubleOrNull() ?: 0.0
                     val w = weight.toDoubleOrNull() ?: 0.0
                     if (a > 0 && h > 0 && w > 0) {
-                        // Mifflin-St Jeor 기초대사량 계산식 (보다 최신/정확한 공식)
-                        val bmr = if (gender == "남성") (10 * w) + (6.25 * h) - (5 * a) + 5 else (10 * w) + (6.25 * h) - (5 * a) - 161
-                        val tdee = (bmr * activityLevel).toInt() // 활동 대사량(TDEE) 계산
-                        onCalculate(tdee)
+                        // 1. Mifflin-St Jeor 기초대사량(BMR) 계산식
+                        val bmr = if (gender == "남성") {
+                            (10 * w) + (6.25 * h) - (5 * a) + 5
+                        } else {
+                            (10 * w) + (6.25 * h) - (5 * a) - 161
+                        }
+
+                        // 2. 유지 칼로리(TDEE) 계산
+                        val tdee = bmr * activityLevel
+
+                        // 3. 사용자의 목표에 따른 최종 하루 권장 칼로리 도출
+                        val finalCalories = when (goal) {
+                            "다이어트" -> tdee - 500
+                            "벌크업" -> tdee + 300
+                            else -> tdee // 체중 유지
+                        }
+
+                        // 계산된 최종 값을 메인 상태로 전달 (소수점은 버리고 정수로 변환)
+                        onCalculate(finalCalories.toInt())
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
