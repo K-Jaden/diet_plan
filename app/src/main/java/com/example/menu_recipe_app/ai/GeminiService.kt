@@ -116,9 +116,17 @@ class GeminiService {
         Log.d(TAG, "=== AI 응답 수신 (${responseText.length}자) ===")
         Log.d(TAG, responseText.take(500))
 
+        // AI가 마크다운(```json)을 붙이거나 끝에 여분의 }를 붙이는 오류를 방어하기 위한 정제 로직
+        var cleanText = responseText.trim()
+        val startIndex = cleanText.indexOf('{')
+        val endIndex = cleanText.lastIndexOf('}')
+        if (startIndex in 0..endIndex) {
+            cleanText = cleanText.substring(startIndex, endIndex + 1)
+        }
+
         // JSON → WeeklyMealPlan 파싱
         return try {
-            val mealPlan = json.decodeFromString<WeeklyMealPlan>(responseText)
+            val mealPlan = json.decodeFromString<WeeklyMealPlan>(cleanText)
 
             // 검증: 7일치가 맞는지 확인
             if (mealPlan.days.size != 7) {

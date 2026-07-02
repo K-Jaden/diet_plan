@@ -106,6 +106,7 @@ fun AppNavigation() {
         composable("main") {
             MainScreen(
                 navController = navController,
+                isLoggedIn = isLoggedIn,
                 ticketCount = ticketCount,
                 onTicketAdd = { added -> ticketCount += added },
                 onNavigateToGenerate = { navController.navigate("generate_step1") },
@@ -258,6 +259,7 @@ fun TopHeaderSection(primaryColor: Color, ticketCount: Int, onTicketClick: () ->
 @Composable
 fun MainScreen(
     navController: androidx.navigation.NavController,
+    isLoggedIn: Boolean,           // ★ 추가된 로그인 상태 파라미터
     ticketCount: Int,              // ★ 지갑 잔액 받아옴
     onTicketAdd: (Int) -> Unit,    // ★ 충전 기능 받아옴
     onNavigateToGenerate: () -> Unit,
@@ -265,6 +267,7 @@ fun MainScreen(
 ) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var showTicketSheet by remember { mutableStateOf(false) }
 
@@ -282,9 +285,34 @@ fun MainScreen(
                 onTicketClick = { showTicketSheet = true }
             )
             Spacer(modifier = Modifier.height(24.dp))
-            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
-            Spacer(modifier = Modifier.height(24.dp))
-            CalendarCard(onNavigateToCalendar = onNavigateToCalendar)
+            
+            val db = remember { com.example.menu_recipe_app.db.AppDatabase.getDatabase(context) }
+            val dao = db.mealPlanDao()
+            var planDates by remember { mutableStateOf<Set<LocalDate>>(emptySet()) }
+            
+            LaunchedEffect(Unit) {
+                val datesStr = dao.getAllMealPlanDates()
+                planDates = datesStr.mapNotNull { 
+                    try { LocalDate.parse(it) } catch (e: Exception) { null } 
+                }.toSet()
+            }
+
+            WeeklyGenerateCard(primaryGreen, onNavigate = {
+                if (!isLoggedIn) {
+                    android.widget.Toast.makeText(context, "로그인을 먼저 해주세요.", android.widget.Toast.LENGTH_SHORT).show()
+                } else if (planDates.contains(LocalDate.now())) {
+                    android.widget.Toast.makeText(context, "이미 오늘의 식단이 생성되어 있습니다. 식단 수정은 캘린더에서 가능합니다.", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    onNavigateToGenerate()
+                }
+            })
+            var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+            CalendarCard(
+                onNavigateToCalendar = onNavigateToCalendar,
+                selectedDate = selectedDate,
+                onDateSelected = { selectedDate = it },
+                hasPlanDates = planDates
+            )
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
@@ -331,9 +359,13 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
 // 캘린더 카드 컴포넌트 (더보기 버튼 추가 완료)
 // ==========================================
 @Composable
-fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 뚫기 완료!
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+fun CalendarCard(
+    onNavigateToCalendar: () -> Unit,
+    selectedDate: LocalDate = LocalDate.now(),
+    onDateSelected: (LocalDate) -> Unit = {},
+    hasPlanDates: Set<LocalDate> = emptySet()
+) {
+    var currentMonth by remember(selectedDate) { mutableStateOf(YearMonth.from(selectedDate)) }
     val primaryGreen = Color(0xFF5A8754)
 
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
@@ -396,7 +428,7 @@ fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 
                     val dayOffset = index - firstDayOfWeek + 1
                     if (dayOffset in 1..daysInMonth) {
                         val date = currentMonth.atDay(dayOffset)
-                        CalendarDayItem(date = date, isSelected = date == selectedDate, onClick = { selectedDate = date }, primaryGreen = primaryGreen)
+                        CalendarDayItem(date = date, isSelected = date == selectedDate, onClick = { onDateSelected(date) }, primaryGreen = primaryGreen, hasPlan = hasPlanDates.contains(date))
                     } else {
                         Box(modifier = Modifier.size(48.dp))
                     }
@@ -407,9 +439,8 @@ fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 
 }
 
 @Composable
-fun CalendarDayItem(date: LocalDate, isSelected: Boolean, onClick: () -> Unit, primaryGreen: Color) {
-    val hasPlan = date.dayOfMonth % 2 != 0 || date.dayOfMonth % 5 == 0
-    val hasRecord = date.dayOfMonth % 3 == 0
+fun CalendarDayItem(date: LocalDate, isSelected: Boolean, onClick: () -> Unit, primaryGreen: Color, hasPlan: Boolean = false) {
+    val hasRecord = date.dayOfMonth % 3 == 0 // 임시 로직 유지 (기록 기능은 별도)
 
     Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
@@ -1143,6 +1174,9 @@ fun GenerateStep3Screen(
                                             if (dailyPlan.snack != null && dailyPlan.snack.menuName != "없음") entities.add(createEntity("snack", dailyPlan.snack))
                                         }
                                     }
+                                    val startDateStr = baseDate.format(formatter)
+                                    val endDateStr = baseDate.plusDays(6).format(formatter)
+                                    dao.deleteMealsByDateRange(startDateStr, endDateStr) // ★ 중복 적재(하루 5끼 등) 방지를 위해 기존 7일치 삭제
                                     dao.insertAll(entities)
                                     onSaveClick()
                                 }
@@ -1754,6 +1788,25 @@ fun SelectableOptionChip(
 fun CalendarScreen(navController: androidx.navigation.NavController) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = remember { com.example.menu_recipe_app.db.AppDatabase.getDatabase(context) }
+    val dao = db.mealPlanDao()
+
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    var dailyMeals by remember(selectedDate) { mutableStateOf<List<com.example.menu_recipe_app.db.MealPlanEntity>>(emptyList()) }
+    var planDates by remember { mutableStateOf<Set<LocalDate>>(emptySet()) }
+
+    LaunchedEffect(selectedDate) {
+        val dateStr = selectedDate.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+        // 코루틴 내에서 DB 조회 (현재 날짜 식단 & 모든 점 찍기 날짜)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            dailyMeals = dao.getMealsByDate(dateStr)
+            val datesStr = dao.getAllMealPlanDates()
+            planDates = datesStr.mapNotNull { 
+                try { LocalDate.parse(it) } catch (e: Exception) { null } 
+            }.toSet()
+        }
+    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1773,27 +1826,66 @@ fun CalendarScreen(navController: androidx.navigation.NavController) {
                 .padding(20.dp)
         ) {
             // ★ 에러 해결: 상세 캘린더 화면 안에서는 '더보기'를 눌러도 아무 일도 안 일어나게 빈 괄호 {} 를 넘깁니다.
-            CalendarCard(onNavigateToCalendar = {})
+            CalendarCard(
+                onNavigateToCalendar = {},
+                selectedDate = selectedDate,
+                onDateSelected = { selectedDate = it },
+                hasPlanDates = planDates
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
             Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 임시로 보여줄 빈 상태(Empty State) UI
-            Card(
-                modifier = Modifier.fillMaxWidth().height(150.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFEEEEEE))
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+            if (dailyMeals.isEmpty()) {
+                // 임시로 보여줄 빈 상태(Empty State) UI
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(150.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
                 ) {
-                    Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("해당 날짜에 등록된 식단이 없습니다.", color = Color.Gray, fontSize = 14.sp)
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("해당 날짜에 등록된 식단이 없습니다.", color = Color.Gray, fontSize = 14.sp)
+                    }
+                }
+            } else {
+                // 식단 목록 렌더링
+                dailyMeals.forEach { meal ->
+                    val mealTypeName = when (meal.mealType) {
+                        "breakfast" -> "아침"
+                        "lunch" -> "점심"
+                        "dinner" -> "저녁"
+                        "snack" -> "간식"
+                        else -> meal.mealType
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.background(primaryGreen, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(mealTypeName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(meal.menuName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("${meal.calories} kcal", color = Color.Gray, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("조리법: ${meal.recipe}", fontSize = 14.sp, color = Color.DarkGray)
+                        }
+                    }
                 }
             }
         }

@@ -67,10 +67,17 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // Room
     val room_version = "2.8.4"
-    implementation("androidx.room:room-runtime:${room_version}")
-    implementation("androidx.room:room-ktx:${room_version}") // 코루틴(비동기) 지원
-    ksp("androidx.room:room-compiler:${room_version}") // KSP 컴파일러
+    implementation("androidx.room:room-runtime:$room_version")
+    ksp("androidx.room:room-compiler:$room_version")
+    implementation("androidx.room:room-ktx:$room_version")
+
+    // Retrofit & OkHttp
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // ★ Gemini AI SDK
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")

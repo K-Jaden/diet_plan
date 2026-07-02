@@ -16,7 +16,8 @@ data class RecipeJson(
     val menuName: String,
     val ingredients: String,
     val instructions: String,
-    val calories: Int
+    val calories: Int,
+    val embedding: List<Float>? = null
 )
 
 class RecipeRepository(
@@ -51,7 +52,7 @@ class RecipeRepository(
      */
     private suspend fun fetchEmbedding(text: String): List<Float> {
         return withContext(Dispatchers.IO) {
-            val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${BuildConfig.GEMINI_API_KEY}")
+            val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent?key=${BuildConfig.GEMINI_API_KEY}")
             val connection = url.openConnection() as java.net.HttpURLConnection
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
@@ -59,7 +60,7 @@ class RecipeRepository(
 
             val requestBody = """
                 {
-                  "model": "models/text-embedding-004",
+                  "model": "models/gemini-embedding-2",
                   "content": {
                     "parts": [{
                       "text": "${text.replace("\"", "\\\"").replace("\n", " ")}"
@@ -103,15 +104,20 @@ class RecipeRepository(
                 // 재료 텍스트를 기준으로 임베딩을 생성합니다.
                 val embeddingText = "요리명: ${recipe.menuName}, 재료: ${recipe.ingredients}"
                 
-                Log.d(TAG, "'${recipe.menuName}' 임베딩 생성 중...")
+                Log.d(TAG, "'${recipe.menuName}' 초기 적재 중...")
                 var embeddingJson: String? = null
-                
-                try {
-                    // API 호출 (HTTP)
-                    val vectorList = fetchEmbedding(embeddingText)
-                    embeddingJson = vectorList.joinToString(separator = ",", prefix = "[", postfix = "]")
-                } catch (e: Exception) {
-                    Log.e(TAG, "임베딩 생성 실패: ${recipe.menuName} - ${e.message}")
+
+                if (recipe.embedding != null) {
+                    embeddingJson = recipe.embedding.joinToString(separator = ",", prefix = "[", postfix = "]")
+                } else {
+                    try {
+                        // API 호출 (HTTP) - 파일에 임베딩이 없는 경우만 (하위 호환)
+                        Log.d(TAG, "'${recipe.menuName}' 임베딩 생성 중...")
+                        val vectorList = fetchEmbedding(embeddingText)
+                        embeddingJson = vectorList.joinToString(separator = ",", prefix = "[", postfix = "]")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "임베딩 생성 실패: ${recipe.menuName} - ${e.message}")
+                    }
                 }
 
                 // Entity로 변환하여 DB에 저장
@@ -164,16 +170,114 @@ class RecipeRepository(
                             
                         val score = cosineSimilarity(queryVector, vector)
                         Pair(recipe, score)
-                    } catch (e: Exception) {
-                        null
+                    } catch (e: Exception) { null }
+                } ?: Pair(recipe, 0f)
+            }
+
+            // 유사도 0.4 이상인 레시피만 필터링
+            var topRecipes = scoredRecipes
+                .filter { it.second > 0.4f }
+                .sortedByDescending { it.second }
+                .take(limit)
+                .map { it.first }
+
+            // 레이지 로딩 로직: 검색 결과가 5개 미만이면 공공데이터 API 호출
+            if (topRecipes.size < 5) {
+                Log.d(TAG, "로컬 검색 결과 부족(${topRecipes.size}개). 공공데이터 API에서 추가 레시피를 가져옵니다...")
+                val success = fetchAndSaveFromPublicApi(userIngredients)
+                if (success) {
+                    // 새로 DB에 추가되었으므로 다시 검색
+                    val newAllRecipes = recipeDao.getAllRecipes()
+                    val newScoredRecipes = newAllRecipes.mapNotNull { recipe ->
+                        recipe.embedding?.let { embeddingStr ->
+                            try {
+                                val vector = embeddingStr.removeSurrounding("[", "]").split(",").map { it.trim().toFloat() }
+                                val score = cosineSimilarity(queryVector, vector)
+                                Pair(recipe, score)
+                            } catch (e: Exception) { null }
+                        } ?: Pair(recipe, 0f)
                     }
+                    topRecipes = newScoredRecipes
+                        .filter { it.second > 0.4f }
+                        .sortedByDescending { it.second }
+                        .take(limit)
+                        .map { it.first }
                 }
             }
 
-            // 3. 유사도 높은 순 정렬 및 상위 반환
-            scoredRecipes.sortedByDescending { it.second }
-                .map { it.first }
-                .take(limit)
+            // 여전히 부족하거나 유사도 필터링을 통과한 게 없다면, 가장 점수가 높은(또는 임의의) 데이터라도 반환
+            if (topRecipes.isEmpty()) {
+                return@withContext scoredRecipes.sortedByDescending { it.second }.take(limit).map { it.first }
+            }
+
+            return@withContext topRecipes
+        }
+    }
+
+    /**
+     * 공공데이터 API에서 유저의 첫 번째 재료를 기반으로 레시피를 검색하고 DB에 저장 (레이지 로딩)
+     */
+    private suspend fun fetchAndSaveFromPublicApi(userIngredients: List<String>): Boolean {
+        val apiKey = BuildConfig.PUBLIC_DATA_API_KEY
+        if (apiKey.isBlank() || apiKey == "YOUR_PUBLIC_DATA_API_KEY_HERE") {
+            Log.w(TAG, "PUBLIC_DATA_API_KEY가 설정되지 않아 외부 API를 호출할 수 없습니다.")
+            return false
+        }
+
+        // 가장 중요한 첫 번째 재료를 검색어로 사용
+        val mainIngredient = userIngredients.firstOrNull() ?: return false
+
+        return try {
+            // 외부 API 호출 (예: 1번부터 10번까지 최대 10개)
+            val response = com.example.menu_recipe_app.api.PublicRecipeClient.api.searchRecipesByIngredient(
+                apiKey = apiKey,
+                startIdx = 1,
+                endIdx = 10,
+                ingredient = mainIngredient
+            )
+
+            val rows = response.cookRcp01?.row
+            if (rows.isNullOrEmpty()) {
+                Log.d(TAG, "공공데이터 API에 '$mainIngredient' 관련 레시피가 없습니다.")
+                return false
+            }
+
+            Log.d(TAG, "공공데이터 API에서 ${rows.size}개의 레시피를 가져왔습니다. 임베딩 및 저장 시작...")
+            
+            for (row in rows) {
+                // 이미 DB에 같은 이름의 레시피가 있는지 확인 (간단하게)
+                if (recipeDao.getAllRecipes().any { it.menuName == row.rcpNm }) continue
+
+                val menuName = row.rcpNm ?: "이름 없음"
+                val ingredients = row.rcpPartsDtls ?: "재료 정보 없음"
+                val instructions = row.getInstructions()
+                val caloriesStr = row.infoEng ?: "0"
+                val calories = caloriesStr.replace(Regex("[^0-9]"), "").toIntOrNull()
+
+                // 임베딩 텍스트 생성
+                val textToEmbed = "요리 이름: ${menuName}\n재료: $ingredients\n조리법: $instructions"
+                val embeddingJson: String? = try {
+                    val vector = fetchEmbedding(textToEmbed)
+                    "[" + vector.joinToString(", ") + "]"
+                } catch (e: Exception) {
+                    Log.e(TAG, "새 레시피 임베딩 생성 실패: $menuName", e)
+                    null
+                }
+
+                val entity = RecipeEntity(
+                    menuName = menuName,
+                    ingredients = ingredients,
+                    instructions = instructions,
+                    imageUrl = row.attFileNoMain,
+                    calories = calories,
+                    embedding = embeddingJson
+                )
+                recipeDao.insertRecipe(entity)
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "공공데이터 API 연동 실패", e)
+            false
         }
     }
 

@@ -34,4 +34,12 @@ interface MealPlanDao {
     // 저장된 모든 식단 가져오기
     @Query("SELECT * FROM meal_plan_table ORDER BY date, id")
     suspend fun getAllMealPlans(): List<MealPlanEntity>
+
+    // 식단이 등록된 모든 고유 날짜(String) 가져오기 (캘린더 점 찍기용)
+    @Query("SELECT DISTINCT date FROM meal_plan_table")
+    suspend fun getAllMealPlanDates(): List<String>
+
+    // 특정 날짜에 식단이 1개라도 존재하는지 확인 (중복 생성 방지용)
+    @Query("SELECT EXISTS(SELECT 1 FROM meal_plan_table WHERE date = :date)")
+    suspend fun hasMealPlanForDate(date: String): Boolean
 }
