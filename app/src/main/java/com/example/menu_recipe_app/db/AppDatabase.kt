@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.menu_recipe_app.dbimport.RecipeDao
+
 
 // 사용할 Entity들을 배열로 나열하고, 버전을 적어줍니다.
 @Database(entities = [RecipeEntity::class], version = 1, exportSchema = false)

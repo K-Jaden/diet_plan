@@ -51,6 +51,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.example.menu_recipe_app.db.AppDatabase
 import com.example.menu_recipe_app.db.RecipeEntity
+import com.example.menu_recipe_app.ui.recipe.RecipeDetailScreen
+import com.example.menu_recipe_app.ui.recipe.RecipeScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,29 +60,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // ==========================================
         // [DB 테스트 코드 시작] 앱 켜지자마자 몰래 실행됨
-        // ==========================================
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(applicationContext)
-            val dao = db.recipeDao() // 만약 이름을 바꾸셨다면 바꾼 이름으로 호출
-
-            // 1. 가짜 김치찌개 데이터 만들기
-            val testRecipe = RecipeEntity(
-                menuName = "테스트 김치찌개",
-                ingredients = "김치, 돼지고기, 두부",
-                instructions = "1. 김치를 볶는다. 2. 끓인다.",
-                imageUrl = "https://dummy.url/kimchi.jpg"
-            )
-
-            // 2. DB에 밀어 넣기!
-            dao.insertRecipe(testRecipe)
-            Log.d("DB_TEST", "데이터 저장 완료!")
-
-            // 3. DB에서 이름으로 다시 찾아오기!
-            val savedData = dao.getRecipeByName("테스트 김치찌개")
-            Log.d("DB_TEST", "찾아온 데이터: $savedData")
-        }
-        // ==========================================
-        // [DB 테스트 코드 끝]
         // ==========================================
         setContent {
             MaterialTheme {
@@ -151,11 +130,19 @@ fun AppNavigation() {
         composable("recipe") {
             RecipeScreen(
                 navController = navController,
-                onNavigateToDetail = { navController.navigate("recipe_detail") }
+                onNavigateToDetail = { menuName -> navController.navigate("recipe_detail/$menuName") },
+                bottomBar = { BottomNavigationBar(navController, "recipe") }
             )
         }
-        composable("recipe_detail") {
-            RecipeDetailScreen(onBackClick = { navController.popBackStack() })
+        composable(
+            route = "recipe_detail/{menuName}",
+            arguments = listOf(androidx.navigation.navArgument("menuName") { type = androidx.navigation.NavType.StringType })
+        ) { backStackEntry ->
+            val menuName = backStackEntry.arguments?.getString("menuName") ?: ""
+            RecipeDetailScreen(
+                menuName = menuName,
+                onBackClick = { navController.popBackStack() }
+            )
         }
         composable("calendar") {
             CalendarScreen(navController = navController)
@@ -1402,159 +1389,24 @@ fun AgentFinalSummaryCard(primaryColor: Color) {
 }
 
 // ★ 코드 관리를 위해 레시피 데이터 구조를 상단에 정의합니다.
-data class SimpleRecipe(
-    val name: String,
-    val imageUrl: String
-)
+
 
 // ==========================================
 // ★ 새로운 화면: 레시피 메인 탭 (사진 추가 버전)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: () -> Unit) {
-    val backgroundColor = Color(0xFFFCFCFA)
 
-    // ★ 텍스트 리스트에서 이미지 URL을 포함한 객체 리스트로 업그레이드
-    val recipeList = remember {
-        listOf(
-            SimpleRecipe("된장찌개", "https://loremflickr.com/300/300/korean,stew"),
-            SimpleRecipe("김치볶음밥", "https://loremflickr.com/300/300/friedrice"),
-            SimpleRecipe("계란말이", "https://loremflickr.com/300/300/omelet"),
-            SimpleRecipe("제육볶음", "https://loremflickr.com/300/300/spicypork"),
-            SimpleRecipe("시금치무침", "https://loremflickr.com/300/300/spinach"),
-            SimpleRecipe("두부조림", "https://loremflickr.com/300/300/tofu"),
-            SimpleRecipe("오징어볶음", "https://loremflickr.com/300/300/squid"),
-            SimpleRecipe("감자채볶음", "https://loremflickr.com/300/300/potato"),
-            SimpleRecipe("소고기무국", "https://loremflickr.com/300/300/soup")
-        )
-    }
-
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(title = { Text("레시피", fontWeight = FontWeight.Bold, fontSize = 20.sp) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor))
-        },
-        bottomBar = { BottomNavigationBar(navController, "recipe") }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            OutlinedTextField(
-                value = "", onValueChange = {}, placeholder = { Text("어떤 요리를 만들어볼까요?", color = Color.Gray, fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "검색", tint = Color.Gray) },
-                colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White, unfocusedBorderColor = Color(0xFFEEEEEE)),
-                shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()
-            ) {
-                items(recipeList.size) { index ->
-                    val recipe = recipeList[index]
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onNavigateToDetail() }) {
-                        // ★ 기존의 회색 Icon 구조를 Coil 이미지 컴포넌트로 전격 교체!
-                        // 프로젝트 세팅 환경(Coil2 또는 Coil3)에 맞춰 알맞은 패키지로 로드됩니다.
-                        AsyncImage(
-                            model = recipe.imageUrl,
-                            contentDescription = recipe.name,
-                            modifier = Modifier
-                                .size(90.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFF0F0F0)),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(recipe.name, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ==========================================
 // ★ 새로운 화면: 레시피 상세 화면
 // ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RecipeDetailScreen(onBackClick: () -> Unit) {
-    val backgroundColor = Color(0xFFFCFCFA)
-    val primaryGreen = Color(0xFF5A8754)
 
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { },
-                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
-                actions = { IconButton(onClick = { }) { Icon(Icons.Default.BookmarkBorder, contentDescription = "저장") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { innerPadding ->
-        // ★ 여기에 innerPadding을 필수로 넣어주어야 합니다!
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
-            }
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text("차돌박이 된장찌개", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Timer, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("20분", color = Color.Gray, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("350 kcal", color = Color.Gray, fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.height(32.dp))
-                Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(12.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        RecipeIngredientRow("차돌박이", "150g")
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
-                        RecipeIngredientRow("애호박", "1/2개")
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
-                        RecipeIngredientRow("두부", "반 모")
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
-                        RecipeIngredientRow("시판 된장", "2큰술")
-                    }
-                }
-                Spacer(modifier = Modifier.height(32.dp))
-                Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                RecipeStepRow("1", "애호박과 두부를 먹기 좋은 크기로 깍둑썰기 해줍니다.", primaryGreen)
-                RecipeStepRow("2", "냄비에 차돌박이를 넣고 중불에서 겉면이 익을 때까지 볶아줍니다.", primaryGreen)
-                RecipeStepRow("3", "고기가 익으면 물 500ml를 넣고 된장을 풀어줍니다.", primaryGreen)
-                RecipeStepRow("4", "물이 끓어오르면 썰어둔 야채와 두부를 넣고 5분간 끓여 완성합니다.", primaryGreen)
-                Spacer(modifier = Modifier.height(40.dp))
-            }
-        }
-    }
-}
+
+
+
+
 
 @Composable
-fun RecipeIngredientRow(name: String, amount: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(name, fontSize = 15.sp, color = Color.DarkGray)
-        Text(amount, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-fun RecipeStepRow(stepNum: String, instruction: String, primaryColor: Color) {
-    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp), verticalAlignment = Alignment.Top) {
-        Box(modifier = Modifier.size(24.dp).background(primaryColor, CircleShape).padding(top = 2.dp), contentAlignment = Alignment.Center) {
-            Text(stepNum, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(instruction, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 2.dp))
-    }
-}@Composable
 fun SelectableOptionChip(
     modifier: Modifier = Modifier,
     text: String,
