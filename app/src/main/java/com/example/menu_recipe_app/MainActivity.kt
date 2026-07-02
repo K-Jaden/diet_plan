@@ -58,36 +58,21 @@ import com.example.menu_recipe_app.ai.DailyMealPlan
 import com.example.menu_recipe_app.ai.Meal
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import com.example.menu_recipe_app.db.RecipeRepository
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // ==========================================
-        // [DB 테스트 코드 시작] 앱 켜지자마자 몰래 실행됨
+        // [DB 레시피 시드 및 RAG 준비]
         // ==========================================
         lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(applicationContext)
-            val dao = db.recipeDao() // 만약 이름을 바꾸셨다면 바꾼 이름으로 호출
-
-            // 1. 가짜 김치찌개 데이터 만들기
-            val testRecipe = RecipeEntity(
-                menuName = "테스트 김치찌개",
-                ingredients = "김치, 돼지고기, 두부",
-                instructions = "1. 김치를 볶는다. 2. 끓인다.",
-                imageUrl = "https://dummy.url/kimchi.jpg"
-            )
-
-            // 2. DB에 밀어 넣기!
-            dao.insertRecipe(testRecipe)
-            Log.d("DB_TEST", "데이터 저장 완료!")
-
-            // 3. DB에서 이름으로 다시 찾아오기!
-            val savedData = dao.getRecipeByName("테스트 김치찌개")
-            Log.d("DB_TEST", "찾아온 데이터: $savedData")
+            val repository = RecipeRepository(applicationContext, db.recipeDao())
+            repository.seedDatabaseIfNeeded() // 앱 최초 실행 시 recipes.json 로드 및 임베딩 생성
+            Log.d("RAG_SYSTEM", "초기 데이터 시드 검사 완료")
         }
-        // ==========================================
-        // [DB 테스트 코드 끝]
         // ==========================================
         setContent {
             MaterialTheme {
@@ -815,7 +800,12 @@ fun GenerateStep2Screen(
                                             else -> AgentType.Budget()
                                         }
 
-                                        // 2. API 호출
+                                        // 2. RAG 검색 (DB에서 보유 재료로 레시피 검색)
+                                        val db = AppDatabase.getDatabase(context)
+                                        val repository = RecipeRepository(context, db.recipeDao())
+                                        val allowedRecipes = repository.searchRecipesByIngredients(userIngredients, limit = 10)
+
+                                        // 3. API 호출
                                         val service = GeminiService()
                                         val result = service.generateMealPlan(
                                             agentType = agentType,
@@ -824,7 +814,8 @@ fun GenerateStep2Screen(
                                             excludedIngredients = userExcludedIngredients,
                                             mealsPerDay = mealsPerDay,
                                             includeSnack = includeSnack,
-                                            mealStyle = mealStyle
+                                            mealStyle = mealStyle,
+                                            allowedRecipes = allowedRecipes
                                         )
 
                                         isGenerating = false
@@ -1301,6 +1292,13 @@ fun GenerateStep3Screen(
                                     "혈당케어" -> AgentType.BloodSugar
                                     else -> AgentType.Budget()
                                 }
+                                
+                                // 2. RAG 검색
+                                val db = AppDatabase.getDatabase(context)
+                                val repository = RecipeRepository(context, db.recipeDao())
+                                val allowedRecipes = repository.searchRecipesByIngredients(userIngredients, limit = 10)
+
+                                // 3. API 호출
                                 val result = GeminiService().generateMealPlan(
                                     agentType = type,
                                     userCalories = userCalories,
@@ -1309,7 +1307,8 @@ fun GenerateStep3Screen(
                                     mealsPerDay = 3,
                                     includeSnack = true,
                                     mealStyle = "골고루",
-                                    additionalRequest = requestToPass
+                                    additionalRequest = requestToPass,
+                                    allowedRecipes = allowedRecipes
                                 )
                                 isRegenerating = false
                                 when (result) {

@@ -12,5 +12,7 @@ data class RecipeEntity(
     val menuName: String,     // 요리 이름 (예: 김치찌개)
     val ingredients: String,  // 재료
     val instructions: String, // 조리 순서
-    val imageUrl: String?     // 사진 URL (사진이 없을 수도 있으니 '?'를 붙여 null 허용)
+    val imageUrl: String?,    // 사진 URL
+    val calories: Int? = null, // 칼로리
+    val embedding: String? = null // 임베딩 벡터 (FloatArray의 JSON 문자열)
 )

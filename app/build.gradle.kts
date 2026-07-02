@@ -24,10 +24,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // ★ Gemini API 키를 BuildConfig에 주입
+        // ★ API 키들을 BuildConfig에 주입
         val properties = Properties()
         properties.load(project.rootProject.file("local.properties").inputStream())
         buildConfigField("String", "GEMINI_API_KEY", "\"${properties["GEMINI_API_KEY"]}\"")
+        buildConfigField("String", "PUBLIC_DATA_API_KEY", "\"${properties["PUBLIC_DATA_API_KEY"] ?: ""}\"")
     }
 
     buildTypes {

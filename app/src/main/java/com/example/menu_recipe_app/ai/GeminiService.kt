@@ -6,6 +6,7 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.generationConfig
 import com.google.ai.client.generativeai.type.content
 import kotlinx.serialization.json.Json
+import com.example.menu_recipe_app.db.RecipeEntity
 
 /**
  * Gemini API 호출 + JSON 파싱 + 에러 처리를 담당하는 핵심 서비스
@@ -50,7 +51,8 @@ class GeminiService {
         mealsPerDay: Int,
         includeSnack: Boolean,
         mealStyle: String,
-        additionalRequest: String = ""
+        additionalRequest: String = "",
+        allowedRecipes: List<RecipeEntity> = emptyList()
     ): MealPlanResult {
 
         // 1. 유저 프롬프트 조립
@@ -61,7 +63,8 @@ class GeminiService {
             mealsPerDay = mealsPerDay,
             includeSnack = includeSnack,
             mealStyle = mealStyle,
-            additionalRequest = additionalRequest
+            additionalRequest = additionalRequest,
+            allowedRecipes = allowedRecipes
         )
 
         Log.d(TAG, "=== 프롬프트 전송 ===")
@@ -90,7 +93,7 @@ class GeminiService {
     // =============================================
     private suspend fun callGemini(systemPrompt: String, userPrompt: String): MealPlanResult {
         val model = GenerativeModel(
-            modelName = "gemini-1.5-flash",
+            modelName = "gemini-flash-lite-latest",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
                 responseMimeType = "application/json"  // ★ JSON 강제 출력
@@ -135,7 +138,8 @@ class GeminiService {
         mealsPerDay: Int,
         includeSnack: Boolean,
         mealStyle: String,
-        additionalRequest: String
+        additionalRequest: String,
+        allowedRecipes: List<RecipeEntity>
     ): String {
         val sb = StringBuilder()
 
@@ -153,7 +157,9 @@ class GeminiService {
         // 보유 재료
         if (ingredients.isNotEmpty()) {
             sb.appendLine("【보유 재료】${ingredients.joinToString(", ")}")
-            sb.appendLine("위 재료를 우선적으로 활용해주세요.")
+            sb.appendLine("★ 매우 중요: 메인 식재료(소고기, 돼지고기, 해산물, 생선, 특별한 채소 등)는 반드시 위 '보유 재료'에 명시된 것만 사용해야 합니다!")
+            sb.appendLine("★ 보유 재료에 없는 메인 식재료를 임의로 지어내서 메뉴에 넣지 마세요 (예: 보유 재료에 소고기가 없는데 스테이크를 추천하면 절대 안 됨).")
+            sb.appendLine("★ 단, 집에 흔히 있는 기본 양념류(소금, 간장, 설탕, 고춧가루, 식용유, 참기름 등)와 쌀(밥), 그리고 필수 향신채(마늘, 파, 양파 등)는 보유 재료에 없어도 알아서 사용 가능합니다.")
         } else {
             sb.appendLine("【보유 재료】없음 — 자유롭게 재료를 선정해주세요.")
         }
@@ -163,6 +169,20 @@ class GeminiService {
         if (excludedIngredients.isNotEmpty()) {
             sb.appendLine("【제외 재료 (알레르기/기피)】${excludedIngredients.joinToString(", ")}")
             sb.appendLine("위 재료는 절대 사용하지 마세요!")
+        }
+        sb.appendLine()
+        
+        // RAG: 허용된 레시피 (가장 중요)
+        if (allowedRecipes.isNotEmpty()) {
+            sb.appendLine("【반드시 사용할 레시피 카탈로그】")
+            sb.appendLine("아래 제공된 레시피 목록 안에서만 메뉴를 선택하여 식단표를 구성해야 합니다. 이 목록에 없는 메뉴(예: 스테이크, 해물볶음 등)를 임의로 지어내면 절대 안 됩니다.")
+            allowedRecipes.forEachIndexed { index, recipe ->
+                sb.appendLine("${index + 1}. ${recipe.menuName} (칼로리: ${recipe.calories ?: "미상"}kcal)")
+                sb.appendLine("   - 재료: ${recipe.ingredients}")
+                sb.appendLine("   - 조리법: ${recipe.instructions}")
+            }
+        } else {
+            sb.appendLine("【참고】사용 가능한 지정 레시피가 없습니다. 위의 보유 재료 한도 내에서 기본 레시피를 생성해주세요.")
         }
         sb.appendLine()
 
