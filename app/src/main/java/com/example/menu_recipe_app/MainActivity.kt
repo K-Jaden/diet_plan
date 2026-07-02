@@ -47,44 +47,36 @@ import androidx.compose.ui.layout.ContentScale
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.example.menu_recipe_app.db.AppDatabase
 import com.example.menu_recipe_app.db.RecipeEntity
+import com.example.menu_recipe_app.db.MealEntity
+import com.example.menu_recipe_app.viewmodel.DietViewModel
+import com.example.menu_recipe_app.viewmodel.DietViewModelFactory
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // ==========================================
-        // [DB 테스트 코드 시작] 앱 켜지자마자 몰래 실행됨
-        // ==========================================
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(applicationContext)
-            val dao = db.recipeDao() // 만약 이름을 바꾸셨다면 바꾼 이름으로 호출
 
-            // 1. 가짜 김치찌개 데이터 만들기
-            val testRecipe = RecipeEntity(
-                menuName = "테스트 김치찌개",
-                ingredients = "김치, 돼지고기, 두부",
-                instructions = "1. 김치를 볶는다. 2. 끓인다.",
-                imageUrl = "https://dummy.url/kimchi.jpg"
-            )
-
-            // 2. DB에 밀어 넣기!
-            dao.insertRecipe(testRecipe)
-            Log.d("DB_TEST", "데이터 저장 완료!")
-
-            // 3. DB에서 이름으로 다시 찾아오기!
-            val savedData = dao.getRecipeByName("테스트 김치찌개")
-            Log.d("DB_TEST", "찾아온 데이터: $savedData")
-        }
-        // ==========================================
-        // [DB 테스트 코드 끝]
-        // ==========================================
         setContent {
             MaterialTheme {
-                AppNavigation()
+                // 1. DB와 Dao 가져오기
+                val db = AppDatabase.getDatabase(applicationContext)
+                val mealDao = db.mealDao()
+
+                // 2. ViewModel 생성하기
+                val dietViewModel: DietViewModel = viewModel(
+                    factory = DietViewModelFactory(mealDao)
+                )
+
+                // 3. Navigation에 ViewModel 넘겨주기
+                AppNavigation(dietViewModel = dietViewModel)
             }
         }
     }
@@ -94,18 +86,19 @@ class MainActivity : ComponentActivity() {
 // 1. 네비게이션 라우터 (로그인 및 칼로리 상태 연동)
 // ==========================================
 @Composable
-fun AppNavigation() {
+fun AppNavigation(dietViewModel: DietViewModel) { // ★ 1. ViewModel 파라미터 추가
     val navController = androidx.navigation.compose.rememberNavController()
 
-    // ★ 전역 상태 관리
+    // ★ 기존에 잘 만들어두신 전역 상태 관리 그대로 유지!
     var ticketCount by remember { mutableIntStateOf(5) }
     var isLoggedIn by remember { mutableStateOf(false) }
-    var userCalories by remember { mutableStateOf<Int?>(null) } // ★ 계산된 하루 권장 칼로리
+    var userCalories by remember { mutableStateOf<Int?>(null) }
 
     androidx.navigation.compose.NavHost(navController = navController, startDestination = "main") {
         composable("main") {
             MainScreen(
                 navController = navController,
+                dietViewModel = dietViewModel, // ★ 2. MainScreen으로 ViewModel 전달
                 ticketCount = ticketCount,
                 onTicketAdd = { added -> ticketCount += added },
                 onNavigateToGenerate = { navController.navigate("generate_step1") },
@@ -141,7 +134,11 @@ fun AppNavigation() {
                 ticketCount = ticketCount,
                 onDeductTicket = { amount -> ticketCount -= amount },
                 onBackClick = { navController.popBackStack() },
-                onSaveClick = { navController.navigate("generate_step4") },
+                // ★ 에러 방지: generatedMeals를 받아 저장!
+                onSaveClick = { generatedMeals ->
+                    dietViewModel.saveGeneratedMeals(generatedMeals)
+                    navController.navigate("generate_step4")
+                },
                 onChangeAgentClick = { navController.popBackStack() }
             )
         }
@@ -248,8 +245,9 @@ fun TopHeaderSection(primaryColor: Color, ticketCount: Int, onTicketClick: () ->
 @Composable
 fun MainScreen(
     navController: androidx.navigation.NavController,
-    ticketCount: Int,              // ★ 지갑 잔액 받아옴
-    onTicketAdd: (Int) -> Unit,    // ★ 충전 기능 받아옴
+    dietViewModel: DietViewModel,  // ViewModel 주입됨
+    ticketCount: Int,
+    onTicketAdd: (Int) -> Unit,
     onNavigateToGenerate: () -> Unit,
     onNavigateToCalendar: () -> Unit
 ) {
@@ -257,6 +255,12 @@ fun MainScreen(
     val primaryGreen = Color(0xFF5A8754)
 
     var showTicketSheet by remember { mutableStateOf(false) }
+
+    // ★ 수정됨: todayMeals 대신 selectedDateMeals 사용!
+    val selectedDateMeals by dietViewModel.selectedDateMeals.collectAsState()
+    val selectedDate by dietViewModel.currentSelectedDate.collectAsState()
+
+    val hasDietPlan = selectedDateMeals.isNotEmpty()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -272,15 +276,41 @@ fun MainScreen(
                 onTicketClick = { showTicketSheet = true }
             )
             Spacer(modifier = Modifier.height(24.dp))
-            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
+
+            // ===============================================
+            if (!hasDietPlan) {
+                WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
+            } else {
+                // 식단이 있을 때: 테스트용 UI (추후 기획하신 진짜 UI로 교체 예정)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        // ★ 수정됨: selectedDateMeals 로 변경
+                        text = "오늘의 식단이 존재합니다! 메뉴: ${selectedDateMeals.first().menuName}",
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+            // ===============================================
+
             Spacer(modifier = Modifier.height(24.dp))
-            CalendarCard(onNavigateToCalendar = onNavigateToCalendar)
+
+            // ★ 에러 해결: CalendarCard에 필요한 3가지 파라미터를 정확히 전달!
+            CalendarCard(
+                selectedDate = selectedDate,
+                onDateSelected = { clickedDate ->
+                    // 날짜 클릭 시 ViewModel에게 데이터 요청
+                    dietViewModel.fetchMealsForDate(clickedDate)
+                },
+                onNavigateToCalendar = onNavigateToCalendar
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
+    // 티켓 바텀 시트 (기존 코드 유지)
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     if (showTicketSheet) {
@@ -292,7 +322,7 @@ fun MainScreen(
             TicketShopSheetContent(
                 primaryColor = primaryGreen,
                 onBuySuccess = { addedTickets ->
-                    onTicketAdd(addedTickets) // ★ 지갑에 돈 채우기
+                    onTicketAdd(addedTickets)
                     showTicketSheet = false
                 }
             )
@@ -321,14 +351,18 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
 // 캘린더 카드 컴포넌트 (더보기 버튼 추가 완료)
 // ==========================================
 @Composable
-fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 뚫기 완료!
+fun CalendarCard(
+    selectedDate: LocalDate,             // ★ 추가 1: 밖(ViewModel)에서 선택된 날짜를 받아옴
+    onDateSelected: (LocalDate) -> Unit, // ★ 추가 2: 날짜를 클릭했을 때 밖으로 알려줌
+    onNavigateToCalendar: () -> Unit
+) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    // var selectedDate by remember { mutableStateOf(LocalDate.now()) } // ★ 삭제: 이제 밖에서 받아오므로 안에서 자체적으로 기억할 필요가 없습니다.
     val primaryGreen = Color(0xFF5A8754)
 
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
-            // [상단 영역] 제목 & 더보기 버튼 & 화살표
+            // [상단 영역] 제목 & 더보기 버튼 & 화살표 (기존 코드 100% 유지)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
@@ -354,7 +388,7 @@ fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 
             }
             Spacer(modifier = Modifier.height(12.dp))
 
-            // [범례] 식단 계획 / 기록
+            // [범례] 식단 계획 / 기록 (기존 코드 100% 유지)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
                 Spacer(modifier = Modifier.width(4.dp))
@@ -366,7 +400,7 @@ fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 
             }
             Spacer(modifier = Modifier.height(16.dp))
 
-            // [요일 표시]
+            // [요일 표시] (기존 코드 100% 유지)
             val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                 daysOfWeek.forEachIndexed { index, day ->
@@ -386,7 +420,14 @@ fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 
                     val dayOffset = index - firstDayOfWeek + 1
                     if (dayOffset in 1..daysInMonth) {
                         val date = currentMonth.atDay(dayOffset)
-                        CalendarDayItem(date = date, isSelected = date == selectedDate, onClick = { selectedDate = date }, primaryGreen = primaryGreen)
+
+                        // ★ 수정: onClick 작동 시 자체 변수를 바꾸는 대신 onDateSelected(date)를 통해 밖으로 전달합니다!
+                        CalendarDayItem(
+                            date = date,
+                            isSelected = date == selectedDate,
+                            onClick = { onDateSelected(date) },
+                            primaryGreen = primaryGreen
+                        )
                     } else {
                         Box(modifier = Modifier.size(48.dp))
                     }
@@ -997,7 +1038,7 @@ fun GenerateStep3Screen(
     ticketCount: Int,
     onDeductTicket: (Int) -> Unit,
     onBackClick: () -> Unit,
-    onSaveClick: () -> Unit,
+    onSaveClick: (List<com.example.menu_recipe_app.db.MealEntity>) -> Unit,
     onChangeAgentClick: () -> Unit
 ) {
     val backgroundColor = Color(0xFFFCFCFA)
@@ -1043,7 +1084,26 @@ fun GenerateStep3Screen(
             if (!isRegenerating) {
                 Column(modifier = Modifier.background(backgroundColor).padding(horizontal = 20.dp).padding(bottom = 24.dp, top = 8.dp)) {
                     Button(
-                        onClick = onSaveClick,
+                        onClick = {
+                            val mealsToSave =
+                                mutableListOf<com.example.menu_recipe_app.db.MealEntity>()
+                            val today = java.time.LocalDate.now()
+                            for (i in 0 until 7) {
+                                if (savedDaysState[i]) { // 체크된 요일만 저장!
+                                    val targetDate = today.plusDays(i.toLong())
+                                    mealsToSave.add(
+                                        com.example.menu_recipe_app.db.MealEntity(
+                                            date = targetDate.toString(),
+                                            mealType = "아침",
+                                            menuName = "AI 추천 오트밀 샐러드",
+                                            calories = 350
+                                        )
+                                    )
+                                    // ... 점심, 저녁 추가
+                                }
+                            }
+                            onSaveClick(mealsToSave)
+                        },
                         enabled = savedDaysState.any { it },
                         colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
                         shape = RoundedCornerShape(12.dp),
@@ -1604,8 +1664,15 @@ fun CalendarScreen(navController: androidx.navigation.NavController) {
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
-            // ★ 에러 해결: 상세 캘린더 화면 안에서는 '더보기'를 눌러도 아무 일도 안 일어나게 빈 괄호 {} 를 넘깁니다.
-            CalendarCard(onNavigateToCalendar = {})
+            // ★ 에러 방지용 임시 날짜 상태 생성
+            var tempDate by remember { mutableStateOf(LocalDate.now()) }
+
+            // ★ 에러 해결: 변경된 파라미터 규격에 맞게 3가지를 모두 넘겨줍니다.
+            CalendarCard(
+                selectedDate = tempDate,
+                onDateSelected = { tempDate = it }, // 클릭하면 tempDate 업데이트
+                onNavigateToCalendar = {}           // 캘린더 안이므로 더보기 기능은 비워둠
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 

@@ -4,16 +4,22 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.menu_recipe_app.dbimport.RecipeDao
 
-// 사용할 Entity들을 배열로 나열하고, 버전을 적어줍니다.
-@Database(entities = [RecipeEntity::class], version = 1, exportSchema = false)
+// 💡 entities 배열에 RecipeEntity와 MealEntity를 모두 등록합니다!
+@Database(entities = [RecipeEntity::class,
+    MealEntity::class,
+    IngredientEntity::class,
+    UserProfileEntity::class],
+    version = 2,
+    exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
-    // DAO를 연결해줍니다.
+    // DAO들을 연결해줍니다.
     abstract fun recipeDao(): RecipeDao
+    abstract fun mealDao(): MealDao
+    abstract fun ingredientDao(): IngredientDao
+    abstract fun userProfileDao(): UserProfileDao
 
-    // DB 객체는 앱 전체에서 딱 1개만 만들어져야 하므로 Singleton 패턴을 사용합니다.
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
@@ -23,9 +29,8 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "recipe_database" // 스마트폰 내부에 저장될 실제 파일 이름
+                    "menu_recipe_database" // DB 파일 이름 하나로 통합
                 )
-                    // DB 구조(version)가 바뀌었을 때 이전 데이터를 날리고 새로 만들지 설정
                     .fallbackToDestructiveMigration()
                     .build()
 
