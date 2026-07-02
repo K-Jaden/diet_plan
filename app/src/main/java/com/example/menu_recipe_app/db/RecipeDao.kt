@@ -24,4 +24,8 @@ interface RecipeDao {
     // 4. 레시피 삭제하기
     @Query("DELETE FROM recipe_table WHERE id = :recipeId")
     suspend fun deleteRecipe(recipeId: Int)
+    // RecipeDao.kt 파일 내부
+
+    @Query("SELECT * FROM recipe_table WHERE id = :id")
+    suspend fun getRecipeById(id: Int): RecipeEntity // 특정 ID의 레시피 1개만 가져오기
 }

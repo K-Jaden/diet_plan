@@ -12,5 +12,7 @@ data class RecipeEntity(
     val menuName: String,     // 요리 이름 (예: 김치찌개)
     val ingredients: String,  // 재료
     val instructions: String, // 조리 순서
-    val imageUrl: String?     // 사진 URL (사진이 없을 수도 있으니 '?'를 붙여 null 허용)
+    val imageUrl: String?,    // 사진 URL (사진이 없을 수도 있으니 '?'를 붙여 null 허용)
+    val servings: String?, //레시피가 몇인분 기준으로 작성됐는지 저장
+    val calories: String?
 )
