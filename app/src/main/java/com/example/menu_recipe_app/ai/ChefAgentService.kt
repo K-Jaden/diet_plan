@@ -97,7 +97,7 @@ object ChefAgentService {
     // ─────────────────────────────────────────────────────────
     private suspend fun callGeminiChef(userPrompt: String): ChefResult {
         val model = GenerativeModel(
-            modelName = "gemini-2.0-flash",
+            modelName = "gemini-flash-lite-latest",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
                 responseMimeType = "application/json"   // ★ JSON 강제 출력
