@@ -5,6 +5,7 @@ import com.example.menu_recipe_app.BuildConfig
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.generationConfig
 import com.google.ai.client.generativeai.type.content
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 
 /**
@@ -71,13 +72,20 @@ class GeminiService {
 
         // 2. Gemini 호출 (에러 시 1회 자동 재시도)
         return try {
-            val result = callGemini(agentType.systemPrompt, userPrompt)
-            result
+            callGemini(agentType.systemPrompt, userPrompt)
         } catch (e: Exception) {
-            Log.w(TAG, "1차 시도 실패, 재시도합니다: ${e.message}")
+            val errorMsg = e.message ?: ""
+            // Rate Limit(429)은 바로 재시도해도 또 실패 → 즉시 에러 반환
+            if (errorMsg.contains("429") ||
+                errorMsg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
+                errorMsg.contains("quota", ignoreCase = true)) {
+                Log.w(TAG, "Rate Limit 감지 — 재시도 없이 에러 반환")
+                return classifyError(e)
+            }
+            Log.w(TAG, "1차 시도 실패, 2초 후 재시도합니다: $errorMsg")
             try {
-                val retryResult = callGemini(agentType.systemPrompt, userPrompt)
-                retryResult
+                delay(2000L)  // ★ 2초 대기 후 재시도 (RPM 낭비 방지)
+                callGemini(agentType.systemPrompt, userPrompt)
             } catch (retryException: Exception) {
                 Log.e(TAG, "2차 시도도 실패: ${retryException.message}")
                 classifyError(retryException)

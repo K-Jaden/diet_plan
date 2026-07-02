@@ -6,6 +6,7 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.generationConfig
 import com.google.ai.client.generativeai.type.content
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.delay
 
 /**
  * ============================================================
@@ -71,9 +72,18 @@ object ChefAgentService {
         return try {
             callGeminiChef(userPrompt)
         } catch (e: Exception) {
-            Log.w(TAG, "1차 시도 실패 — 재시도합니다: ${e.message}")
-            // 2차 재시도
+            val errorMsg = e.message ?: ""
+            // Rate Limit(429)은 재시도해도 또 실패 → 즉시 에러 반환
+            if (errorMsg.contains("429") ||
+                errorMsg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
+                errorMsg.contains("quota", ignoreCase = true)) {
+                Log.w(TAG, "Rate Limit 감지 — 재시도 없이 에러 반환")
+                return classifyError(e)
+            }
+            Log.w(TAG, "1차 시도 실패 — 2초 후 재시도합니다: $errorMsg")
+            // 2차 재시도 (2초 대기 후)
             try {
+                delay(2000L)  // ★ RPM 낭비 방지
                 callGeminiChef(userPrompt)
             } catch (retryEx: Exception) {
                 Log.e(TAG, "2차 시도도 실패: ${retryEx.message}")
