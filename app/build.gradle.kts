@@ -1,7 +1,10 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp") version "2.2.10-2.0.2"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
 }
 
 android {
@@ -20,6 +23,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // ★ Gemini API 키를 BuildConfig에 주입
+        val properties = Properties()
+        properties.load(project.rootProject.file("local.properties").inputStream())
+        buildConfigField("String", "GEMINI_API_KEY", "\"${properties["GEMINI_API_KEY"]}\"")
     }
 
     buildTypes {
@@ -35,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true // ★ BuildConfig 생성 활성화
     }
 }
 
@@ -61,4 +70,10 @@ dependencies {
     implementation("androidx.room:room-runtime:${room_version}")
     implementation("androidx.room:room-ktx:${room_version}") // 코루틴(비동기) 지원
     ksp("androidx.room:room-compiler:${room_version}") // KSP 컴파일러
+
+    // ★ Gemini AI SDK
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+
+    // ★ JSON 파싱 (kotlinx.serialization)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
