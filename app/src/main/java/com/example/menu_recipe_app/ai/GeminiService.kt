@@ -90,7 +90,7 @@ class GeminiService {
     // =============================================
     private suspend fun callGemini(systemPrompt: String, userPrompt: String): MealPlanResult {
         val model = GenerativeModel(
-            modelName = "gemini-1.5-flash",
+            modelName = "gemini-2.0-flash",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
                 responseMimeType = "application/json"  // ★ JSON 강제 출력
