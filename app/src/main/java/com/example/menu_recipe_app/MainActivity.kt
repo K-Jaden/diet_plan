@@ -67,12 +67,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 // 1. DB와 Dao 가져오기
+                // 1. DB와 Dao 가져오기
                 val db = AppDatabase.getDatabase(applicationContext)
                 val mealDao = db.mealDao()
+                val userProfileDao = db.userProfileDao()
+                val recipeDao = db.recipeDao() // ★ 추가
 
                 // 2. ViewModel 생성하기
                 val dietViewModel: DietViewModel = viewModel(
-                    factory = DietViewModelFactory(mealDao)
+                    factory = DietViewModelFactory(mealDao, userProfileDao, recipeDao) // ★ 레시피 DAO 넣기
                 )
 
                 // 3. Navigation에 ViewModel 넘겨주기
@@ -80,7 +83,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-}
 
 // ==========================================
 // 1. 네비게이션 라우터 (로그인 및 칼로리 상태 연동)
@@ -103,10 +105,13 @@ fun AppNavigation(dietViewModel: DietViewModel) { // ★ 1. ViewModel 파라미�
                 onTicketAdd = { added -> ticketCount += added },
                 onNavigateToGenerate = { navController.navigate("generate_step1") },
                 onNavigateToCalendar = { navController.navigate("calendar") }
+
             )
         }
+        // AppNavigation 내부 수정
         composable("generate_step1") {
             GenerateStep1Screen(
+                dietViewModel = dietViewModel, // ★ 추가됨
                 onBackClick = { navController.popBackStack() },
                 onNextClick = { hasIngredients -> navController.navigate("generate_step2/$hasIngredients") }
             )
@@ -117,9 +122,10 @@ fun AppNavigation(dietViewModel: DietViewModel) { // ★ 1. ViewModel 파라미�
         ) { backStackEntry ->
             val hasIngredients = backStackEntry.arguments?.getBoolean("hasIngredients") ?: false
             GenerateStep2Screen(
+                dietViewModel = dietViewModel, // ★ 추가됨
                 hasIngredients = hasIngredients,
                 ticketCount = ticketCount,
-                userCalories = userCalories, // ★ 2단계로 칼로리 정보 전달
+                userCalories = userCalories,
                 onBackClick = { navController.popBackStack() },
                 onNextClick = {
                     if (ticketCount >= 3) {
@@ -159,11 +165,16 @@ fun AppNavigation(dietViewModel: DietViewModel) { // ★ 1. ViewModel 파라미�
             val menuName = backStackEntry.arguments?.getString("menuName") ?: "알 수 없는 요리"
             RecipeDetailScreen(
                 menuName = menuName,
+                viewModel = dietViewModel, // ★ 뷰모델 파라미터 전달!
                 onBackClick = { navController.popBackStack() }
             )
         }
+        // AppNavigation 내부
         composable("calendar") {
-            CalendarScreen(navController = navController)
+            CalendarScreen(
+                navController = navController,
+                dietViewModel = dietViewModel // ★ 여기서 넘겨줌!
+            )
         }
         composable("my") {
             MyPageScreen(
@@ -303,14 +314,14 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ★ 에러 해결: CalendarCard에 필요한 3가지 파라미터를 정확히 전달!
+            // MainScreen 내부에서 CalendarCard 부르는 곳 교체
             CalendarCard(
                 selectedDate = selectedDate,
                 onDateSelected = { clickedDate ->
-                    // 날짜 클릭 시 ViewModel에게 데이터 요청
                     dietViewModel.fetchMealsForDate(clickedDate)
                 },
-                onNavigateToCalendar = onNavigateToCalendar
+                onNavigateToCalendar = onNavigateToCalendar,
+                dietViewModel = dietViewModel // ★ 파라미터 추가!
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -356,115 +367,114 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
     }
 }
 
+    // ==========================================
+// 캘린더 카드 컴포넌트 (DB 연동 버전)
 // ==========================================
-// 캘린더 카드 컴포넌트 (더보기 버튼 추가 완료)
-// ==========================================
-@Composable
-fun CalendarCard(
-    selectedDate: LocalDate,             // ★ 추가 1: 밖(ViewModel)에서 선택된 날짜를 받아옴
-    onDateSelected: (LocalDate) -> Unit, // ★ 추가 2: 날짜를 클릭했을 때 밖으로 알려줌
-    onNavigateToCalendar: () -> Unit
-) {
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    // var selectedDate by remember { mutableStateOf(LocalDate.now()) } // ★ 삭제: 이제 밖에서 받아오므로 안에서 자체적으로 기억할 필요가 없습니다.
-    val primaryGreen = Color(0xFF5A8754)
+    @Composable
+    fun CalendarCard(
+        selectedDate: LocalDate,
+        onDateSelected: (LocalDate) -> Unit,
+        onNavigateToCalendar: () -> Unit,
+        dietViewModel: DietViewModel // ★ 에러 원인 2 해결: 파라미터 추가!
+    ) {
+        var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+        val primaryGreen = Color(0xFF5A8754)
 
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            // [상단 영역] 제목 & 더보기 버튼 & 화살표 (기존 코드 100% 유지)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        LaunchedEffect(currentMonth) {
+            dietViewModel.fetchMealsForMonth(currentMonth)
+        }
+
+        val monthMeals by dietViewModel.currentMonthMeals.collectAsState()
+        val plannedDates = remember(monthMeals) {
+            monthMeals.map { LocalDate.parse(it.date) }.toSet()
+        }
+
+        Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("더보기 >", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.clickable { onNavigateToCalendar() }.padding(4.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.ChevronLeft, contentDescription = "이전 달") }
+                        Text(text = "${currentMonth.year}년 ${currentMonth.monthValue}월", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                        IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.ChevronRight, contentDescription = "다음 달") }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("식단 계획", fontSize = 10.sp, color = Color.Gray)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "더보기 >",
-                        fontSize = 12.sp,
-                        color = Color.Gray,
-                        modifier = Modifier.clickable { onNavigateToCalendar() }.padding(4.dp)
-                    )
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF8D6E63)))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("기록", fontSize = 10.sp, color = Color.Gray)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "이전 달")
-                    }
-                    Text(text = "${currentMonth.year}년 ${currentMonth.monthValue}월", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
-                    IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "다음 달")
+                Spacer(modifier = Modifier.height(16.dp))
+
+                val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                    daysOfWeek.forEachIndexed { index, day ->
+                        val color = when (index) { 0 -> Color.Red; 6 -> Color(0xFF1976D2); else -> Color.DarkGray }
+                        Text(text = day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
                     }
                 }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // [범례] 식단 계획 / 기록 (기존 코드 100% 유지)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("식단 계획", fontSize = 10.sp, color = Color.Gray)
-                Spacer(modifier = Modifier.width(12.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF8D6E63)))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("기록", fontSize = 10.sp, color = Color.Gray)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+                val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
+                val daysInMonth = currentMonth.lengthOfMonth()
+                val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
 
-            // [요일 표시] (기존 코드 100% 유지)
-            val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                daysOfWeek.forEachIndexed { index, day ->
-                    val color = when (index) { 0 -> Color.Red; 6 -> Color(0xFF1976D2); else -> Color.DarkGray }
-                    Text(text = day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // [달력 그리드 날짜 배치]
-            val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
-            val daysInMonth = currentMonth.lengthOfMonth()
-            val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
-
-            LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), userScrollEnabled = false) {
-                items(totalCells) { index ->
-                    val dayOffset = index - firstDayOfWeek + 1
-                    if (dayOffset in 1..daysInMonth) {
-                        val date = currentMonth.atDay(dayOffset)
-
-                        // ★ 수정: onClick 작동 시 자체 변수를 바꾸는 대신 onDateSelected(date)를 통해 밖으로 전달합니다!
-                        CalendarDayItem(
-                            date = date,
-                            isSelected = date == selectedDate,
-                            onClick = { onDateSelected(date) },
-                            primaryGreen = primaryGreen
-                        )
-                    } else {
-                        Box(modifier = Modifier.size(48.dp))
+                LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), userScrollEnabled = false) {
+                    items(totalCells) { index ->
+                        val dayOffset = index - firstDayOfWeek + 1
+                        if (dayOffset in 1..daysInMonth) {
+                            val date = currentMonth.atDay(dayOffset)
+                            CalendarDayItem(
+                                date = date,
+                                isSelected = date == selectedDate,
+                                hasPlan = plannedDates.contains(date),
+                                onClick = { onDateSelected(date) },
+                                primaryGreen = primaryGreen
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(48.dp))
+                        }
                     }
                 }
             }
         }
     }
-}
 
-@Composable
-fun CalendarDayItem(date: LocalDate, isSelected: Boolean, onClick: () -> Unit, primaryGreen: Color) {
-    val hasPlan = date.dayOfMonth % 2 != 0 || date.dayOfMonth % 5 == 0
-    val hasRecord = date.dayOfMonth % 3 == 0
+    @Composable
+    fun CalendarDayItem(
+        date: LocalDate,
+        isSelected: Boolean,
+        hasPlan: Boolean, // ★ 가짜 로직 대신 외부에서 받아오도록 파라미터 추가
+        onClick: () -> Unit,
+        primaryGreen: Color
+    ) {
+        val hasRecord = false // 섭취 완료 표시는 나중을 위해 false 처리
 
-    Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
-            Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
-        }
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-            if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
-            if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
-            if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
-            if (!hasPlan && !hasRecord) Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
+        Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
+                Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
+                if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
+                if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
+                if (!hasPlan && !hasRecord) Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
+            }
         }
     }
-}
-
 @Composable
 fun IngredientsCard() {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -533,7 +543,7 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit) {
+fun GenerateStep1Screen(dietViewModel: DietViewModel, onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
 
@@ -560,7 +570,11 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit)
         },
         bottomBar = {
             Button(
-                onClick = { onNextClick(selectedOption == "있음") },
+                onClick = {
+                    // ★ 1단계: 기피 재료를 콤마로 연결해서 ViewModel에 임시 저장!
+                    dietViewModel.tempAllergies = dislikedIngredients.joinToString(",")
+                    onNextClick(selectedOption == "있음")
+                },
                 enabled = selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty()),
                 colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFE0E0E0)),
                 shape = RoundedCornerShape(12.dp),
@@ -779,9 +793,19 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 // ==========================================
 // 2단계: 에이전트 분석 브리핑 및 선택 (맞춤 칼로리 반영)
 // ==========================================
+// ==========================================
+// 2단계: 에이전트 분석 브리핑 및 선택 (맞춤 칼로리 반영)
+// ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, userCalories: Int?, onBackClick: () -> Unit, onNextClick: () -> Unit) {
+fun GenerateStep2Screen(
+    dietViewModel: DietViewModel, // ★ 누락되었던 뷰모델 파라미터 추가!
+    hasIngredients: Boolean,
+    ticketCount: Int,
+    userCalories: Int?,
+    onBackClick: () -> Unit,
+    onNextClick: () -> Unit
+) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
     val ticketCost = 3
@@ -809,15 +833,30 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, userCalories:
 
     Scaffold(
         containerColor = backgroundColor,
-        topBar = { TopAppBar(title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) }, navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } }, actions = { Spacer(modifier = Modifier.width(48.dp)) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
+        topBar = {
+            TopAppBar(
+                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                actions = { Spacer(modifier = Modifier.width(48.dp)) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        },
         bottomBar = {
+            // ★ 중첩되어 꼬여있던 bottomBar 코드를 깔끔하게 1개로 정리했습니다.
             if (!isAnalyzing) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     val canAfford = ticketCount >= ticketCost
                     Button(
                         onClick = {
-                            if (canAfford) onNextClick()
-                            else android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
+                            if (canAfford) {
+                                // ★ 2단계: 선택된 영양사와 끼니 수를 DB에 영구 저장!
+                                dietViewModel.saveUserProfile(
+                                    agent = selectedAgent ?: "실속관리",
+                                    meals = mealsPerDay
+                                )
+                                onNextClick()
+                            }
+                            else android.widget.Toast.makeText(context, "티켓이 부족합니다...", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         enabled = selectedAgent != null,
                         colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
@@ -844,7 +883,6 @@ fun GenerateStep2Screen(hasIngredients: Boolean, ticketCount: Int, userCalories:
                 }
             } else {
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                    // ★ 마이페이지에서 계산한 신체정보/칼로리가 있을 경우 영양사 에이전트가 브리핑해줌
                     if (userCalories != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -1569,9 +1607,17 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecipeDetailScreen(menuName: String, onBackClick: () -> Unit) { // ★ menuName 인자 추가
+fun RecipeDetailScreen(menuName: String, viewModel: DietViewModel, onBackClick: () -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
+
+    // ★ 화면이 열릴 때 뷰모델에게 레시피 정보를 찾아오라고 명령
+    LaunchedEffect(menuName) {
+        viewModel.fetchRecipeByName(menuName)
+    }
+
+    // ★ DB에서 찾은 레시피 데이터를 관찰
+    val recipe by viewModel.selectedRecipe.collectAsState()
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1585,43 +1631,74 @@ fun RecipeDetailScreen(menuName: String, onBackClick: () -> Unit) { // ★ menuN
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
-            }
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(text = menuName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Timer, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("20분", color = Color.Gray, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("350 kcal", color = Color.Gray, fontSize = 14.sp)
+
+            // 데이터 로딩 중이거나 없을 때
+            if (recipe == null) {
+                Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = primaryGreen)
                 }
-                Spacer(modifier = Modifier.height(32.dp))
-                Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(12.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        RecipeIngredientRow("차돌박이", "150g")
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
-                        RecipeIngredientRow("애호박", "1/2개")
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
-                        RecipeIngredientRow("두부", "반 모")
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
-                        RecipeIngredientRow("시판 된장", "2큰술")
+            } else {
+                // 1. 진짜 사진 뿌려주기
+                AsyncImage(
+                    model = recipe!!.imageUrl,
+                    contentDescription = recipe!!.menuName,
+                    modifier = Modifier.fillMaxWidth().height(250.dp),
+                    contentScale = ContentScale.Crop
+                )
+
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // 2. 진짜 이름 뿌려주기
+                    Text(text = recipe!!.menuName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("20분", color = Color.Gray, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("350 kcal", color = Color.Gray, fontSize = 14.sp) // 시간/칼로리는 추후 확장 가능
                     }
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // 3. 진짜 재료 파싱해서 뿌려주기
+                    Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFEEEEEE)), modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // "차돌박이 150g, 두부 반 모" -> 쉼표로 분리
+                            val ingredientsList = recipe!!.ingredients.split(",")
+                            ingredientsList.forEachIndexed { index, item ->
+                                val parts = item.trim().split(" ") // "차돌박이"와 "150g" 분리
+                                val name = if (parts.size > 1) parts.dropLast(1).joinToString(" ") else item.trim()
+                                val amount = if (parts.size > 1) parts.last() else ""
+
+                                RecipeIngredientRow(name, amount)
+
+                                if (index < ingredientsList.size - 1) {
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFF5F5F5))
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // 4. 진짜 조리 순서 파싱해서 뿌려주기
+                    Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // "\n" 단위로 분리해서 줄마다 표시
+                    val stepsList = recipe!!.instructions.split("\n")
+                    stepsList.forEachIndexed { index, step ->
+                        // "1. 냄비에..." 처럼 앞에 붙은 숫자와 점을 지워줌 (UI에서 예쁘게 숫자 박스를 그려주니까)
+                        val cleanStep = step.replace(Regex("^[0-9]+\\.\\s*"), "").trim()
+                        if (cleanStep.isNotBlank()) {
+                            RecipeStepRow((index + 1).toString(), cleanStep, primaryGreen)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(40.dp))
                 }
-                Spacer(modifier = Modifier.height(32.dp))
-                Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                RecipeStepRow("1", "애호박과 두부를 먹기 좋은 크기로 깍둑썰기 해줍니다.", primaryGreen)
-                RecipeStepRow("2", "냄비에 차돌박이를 넣고 중불에서 겉면이 익을 때까지 볶아줍니다.", primaryGreen)
-                RecipeStepRow("3", "고기가 익으면 물 500ml를 넣고 된장을 풀어줍니다.", primaryGreen)
-                RecipeStepRow("4", "물이 끓어오르면 썰어둔 야채와 두부를 넣고 5분간 끓여 완성합니다.", primaryGreen)
-                Spacer(modifier = Modifier.height(40.dp))
             }
         }
     }
@@ -1668,66 +1745,67 @@ fun SelectableOptionChip(
         )
     }
 }
-// ==========================================
+    // ==========================================
 // ★ 새로운 화면: 상세 캘린더 탭
 // ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CalendarScreen(navController: androidx.navigation.NavController) {
-    val backgroundColor = Color(0xFFFCFCFA)
-    val primaryGreen = Color(0xFF5A8754)
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun CalendarScreen(
+        navController: androidx.navigation.NavController,
+        dietViewModel: DietViewModel // ★ 에러 원인 1 해결: 파라미터 추가!
+    ) {
+        val backgroundColor = Color(0xFFFCFCFA)
+        val primaryGreen = Color(0xFF5A8754)
 
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { Text("식단 캘린더", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
-            )
-        },
-        bottomBar = { BottomNavigationBar(navController, "calendar") }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp)
-        ) {
-            // ★ 에러 방지용 임시 날짜 상태 생성
-            var tempDate by remember { mutableStateOf(LocalDate.now()) }
-
-            // ★ 에러 해결: 변경된 파라미터 규격에 맞게 3가지를 모두 넘겨줍니다.
-            CalendarCard(
-                selectedDate = tempDate,
-                onDateSelected = { tempDate = it }, // 클릭하면 tempDate 업데이트
-                onNavigateToCalendar = {}           // 캘린더 안이므로 더보기 기능은 비워둠
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 임시로 보여줄 빈 상태(Empty State) UI
-            Card(
-                modifier = Modifier.fillMaxWidth().height(150.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+        Scaffold(
+            containerColor = backgroundColor,
+            topBar = {
+                TopAppBar(
+                    title = { Text("식단 캘린더", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+                )
+            },
+            bottomBar = { BottomNavigationBar(navController, "calendar") }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp)
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                var tempDate by remember { mutableStateOf(LocalDate.now()) }
+
+                CalendarCard(
+                    selectedDate = tempDate,
+                    onDateSelected = { tempDate = it },
+                    onNavigateToCalendar = {},
+                    dietViewModel = dietViewModel // ★ 여기서 넘겨줌
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(150.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
                 ) {
-                    Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("해당 날짜에 등록된 식단이 없습니다.", color = Color.Gray, fontSize = 14.sp)
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("해당 날짜에 등록된 식단이 없습니다.", color = Color.Gray, fontSize = 14.sp)
+                    }
                 }
             }
         }
     }
-}
 @Composable
 fun TicketShopSheetContent(primaryColor: Color, onBuySuccess: (Int) -> Unit) {
     Column(
@@ -2015,4 +2093,5 @@ fun MyPageMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title:
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(20.dp))
         }
     }
+}
 }
