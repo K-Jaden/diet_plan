@@ -168,6 +168,16 @@ fun AppNavigation() {
         composable("recipe_detail") {
             RecipeDetailScreen(onBackClick = { navController.popBackStack() })
         }
+        composable(
+            route = "meal_detail/{mealId}",
+            arguments = listOf(androidx.navigation.navArgument("mealId") { type = androidx.navigation.NavType.IntType })
+        ) { backStackEntry ->
+            val mealId = backStackEntry.arguments?.getInt("mealId") ?: 0
+            MealDetailScreen(
+                mealId = mealId,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
         composable("calendar") {
             CalendarScreen(navController = navController)
         }
@@ -1695,7 +1705,6 @@ fun RecipeDetailScreen(onBackClick: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        // ★ 여기에 innerPadding을 필수로 넣어주어야 합니다!
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
@@ -1734,6 +1743,195 @@ fun RecipeDetailScreen(onBackClick: () -> Unit) {
                 RecipeStepRow("3", "고기가 익으면 물 500ml를 넣고 된장을 풀어줍니다.", primaryGreen)
                 RecipeStepRow("4", "물이 끓어오르면 썰어둔 야채와 두부를 넣고 5분간 끓여 완성합니다.", primaryGreen)
                 Spacer(modifier = Modifier.height(40.dp))
+            }
+        }
+    }
+}
+
+// ==========================================
+// 식단 캘린더 → 메뉴 상세 화면 (실제 DB 데이터 기반)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MealDetailScreen(mealId: Int, onBackClick: () -> Unit) {
+    val backgroundColor = Color(0xFFFCFCFA)
+    val primaryGreen = Color(0xFF5A8754)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = remember { com.example.menu_recipe_app.db.AppDatabase.getDatabase(context) }
+    val dao = db.mealPlanDao()
+
+    var meal by remember { mutableStateOf<com.example.menu_recipe_app.db.MealPlanEntity?>(null) }
+
+    LaunchedEffect(mealId) {
+        meal = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            dao.getMealById(mealId)
+        }
+    }
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = {
+            TopAppBar(
+                title = { Text(meal?.menuName ?: "", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        }
+    ) { innerPadding ->
+        if (meal == null) {
+            Box(modifier = Modifier.padding(innerPadding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = primaryGreen)
+            }
+        } else {
+            val currentMeal = meal!!
+            // 재료 목록 파싱 (JSON 배열 문자열 → List<String>)
+            val ingredients = remember(currentMeal.ingredients) {
+                try {
+                    kotlinx.serialization.json.Json.decodeFromString<List<String>>(currentMeal.ingredients)
+                } catch (e: Exception) {
+                    listOf(currentMeal.ingredients)
+                }
+            }
+            // 조리법 파싱 (번호. 단계 형식으로 분리)
+            val steps = remember(currentMeal.recipe) {
+                currentMeal.recipe
+                    .split(Regex("(?=\\d+\\. )"))
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+            }
+
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // 상단 히어로 이미지 영역
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .background(
+                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                colors = listOf(Color(0xFFE8F5E9), Color(0xFFC8E6C9))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.RestaurantMenu,
+                            contentDescription = null,
+                            tint = primaryGreen.copy(alpha = 0.4f),
+                            modifier = Modifier.size(80.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            currentMeal.menuName,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E5D29)
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // 칼로리 및 메타 정보
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color(0xFFFF5722), modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("${currentMeal.calories} kcal", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("칼로리", color = Color.Gray, fontSize = 12.sp)
+                            }
+                            // 구분선
+                            Box(modifier = Modifier.width(1.dp).height(48.dp).background(Color(0xFFEEEEEE)))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Restaurant, contentDescription = null, tint = primaryGreen, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val mealTypeName = when (currentMeal.mealType) {
+                                    "breakfast" -> "아침"
+                                    "lunch" -> "점심"
+                                    "dinner" -> "저녁"
+                                    "snack" -> "간식"
+                                    else -> currentMeal.mealType
+                                }
+                                Text(mealTypeName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("끼니", color = Color.Gray, fontSize = 12.sp)
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(48.dp).background(Color(0xFFEEEEEE)))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF5C7AEA), modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(currentMeal.date.substring(5), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("날짜", color = Color.Gray, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 재료 목록
+                    Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            ingredients.forEachIndexed { index, ingredient ->
+                                Text(
+                                    text = "• $ingredient",
+                                    fontSize = 15.sp,
+                                    color = Color.DarkGray,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                                if (index < ingredients.lastIndex) {
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFF5F5F5))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 조리 순서
+                    Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (steps.size > 1) {
+                        steps.forEachIndexed { index, step ->
+                            // 번호와 내용 분리 ("1. 내용" 형식)
+                            val content = step.replace(Regex("^\\d+\\.\\s*"), "")
+                            RecipeStepRow("${index + 1}", content, primaryGreen)
+                        }
+                    } else {
+                        // 스텝 파싱이 안 된 경우 원본 텍스트 그대로 표시
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = currentMeal.recipe,
+                                fontSize = 15.sp,
+                                lineHeight = 24.sp,
+                                color = Color.DarkGray,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(40.dp))
+                }
             }
         }
     }
@@ -1856,7 +2054,7 @@ fun CalendarScreen(navController: androidx.navigation.NavController) {
                     }
                 }
             } else {
-                // 식단 목록 렌더링
+                // 식단 목록 렌더링 - 클릭 시 상세 화면으로 이동
                 dailyMeals.forEach { meal ->
                     val mealTypeName = when (meal.mealType) {
                         "breakfast" -> "아침"
@@ -1866,24 +2064,30 @@ fun CalendarScreen(navController: androidx.navigation.NavController) {
                         else -> meal.mealType
                     }
                     Card(
+                        onClick = { navController.navigate("meal_detail/${meal.id}") },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier.background(primaryGreen, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(mealTypeName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier.background(primaryGreen, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(mealTypeName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(meal.menuName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(meal.menuName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Icon(Icons.Default.ChevronRight, contentDescription = "상세보기", tint = Color.LightGray, modifier = Modifier.size(20.dp))
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("${meal.calories} kcal", color = Color.Gray, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("조리법: ${meal.recipe}", fontSize = 14.sp, color = Color.DarkGray)
                         }
                     }
                 }

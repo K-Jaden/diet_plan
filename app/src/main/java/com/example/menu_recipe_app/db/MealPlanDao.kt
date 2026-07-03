@@ -42,4 +42,8 @@ interface MealPlanDao {
     // 특정 날짜에 식단이 1개라도 존재하는지 확인 (중복 생성 방지용)
     @Query("SELECT EXISTS(SELECT 1 FROM meal_plan_table WHERE date = :date)")
     suspend fun hasMealPlanForDate(date: String): Boolean
+
+    // ID로 특정 식단 단건 조회 (상세 화면 진입 시 사용)
+    @Query("SELECT * FROM meal_plan_table WHERE id = :id")
+    suspend fun getMealById(id: Int): MealPlanEntity?
 }
