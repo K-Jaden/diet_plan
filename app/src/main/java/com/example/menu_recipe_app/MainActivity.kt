@@ -152,8 +152,9 @@ fun AppNavigation() {
 
     // ★ 전역 상태 관리
     var ticketCount by remember { mutableIntStateOf(5) }
-    var isLoggedIn by remember { mutableStateOf(false) }
+    var loggedInUser by remember { mutableStateOf<com.example.menu_recipe_app.db.UserEntity?>(null) }
     var userCalories by remember { mutableStateOf<Int?>(null) }
+    val isLoggedIn = loggedInUser != null
 
     androidx.navigation.compose.NavHost(navController = navController, startDestination = "main") {
         composable("main") {
@@ -161,7 +162,10 @@ fun AppNavigation() {
                 navController = navController,
                 ticketCount = ticketCount,
                 onTicketAdd = { added -> ticketCount += added },
-                onNavigateToGenerate = { navController.navigate("generate_step1") },
+                onNavigateToGenerate = { 
+                    if (isLoggedIn) navController.navigate("generate_step1")
+                    else navController.navigate("login")
+                },
                 onNavigateToCalendar = { navController.navigate("calendar") }
             )
         }
@@ -239,10 +243,29 @@ fun AppNavigation() {
         composable("calendar") {
             CalendarScreen(navController = navController)
         }
+        composable("login") {
+            LoginScreen(
+                navController = navController,
+                onLoginSuccess = { user -> 
+                    loggedInUser = user
+                    userCalories = user.recommendedCalories.takeIf { it > 0 }
+                    navController.popBackStack() 
+                }
+            )
+        }
+        composable("signup") {
+            SignUpScreen(navController = navController)
+        }
         composable("my") {
             MyPageScreen(
-                navController = navController, isLoggedIn = isLoggedIn, ticketCount = ticketCount, userCalories = userCalories,
-                onLoginClick = { isLoggedIn = true }, onLogoutClick = { isLoggedIn = false; userCalories = null }, onCaloriesCalculated = { calculated -> userCalories = calculated }
+                navController = navController, 
+                loggedInUser = loggedInUser, 
+                ticketCount = ticketCount, 
+                userCalories = userCalories,
+                onLoginClick = { navController.navigate("login") }, 
+                onLogoutClick = { loggedInUser = null; userCalories = null }, 
+                onCaloriesCalculated = { calculated -> userCalories = calculated },
+                onUserUpdated = { updated -> loggedInUser = updated }
             )
         }
     }
@@ -1874,13 +1897,15 @@ fun TicketPackageCard(title: String, price: String, description: String, iconCol
 @Composable
 fun MyPageScreen(
     navController: androidx.navigation.NavController,
-    isLoggedIn: Boolean,
+    loggedInUser: com.example.menu_recipe_app.db.UserEntity?,
     ticketCount: Int,
     userCalories: Int?,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
-    onCaloriesCalculated: (Int) -> Unit
+    onCaloriesCalculated: (Int) -> Unit,
+    onUserUpdated: (com.example.menu_recipe_app.db.UserEntity) -> Unit
 ) {
+    val isLoggedIn = loggedInUser != null
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
 
@@ -1901,9 +1926,9 @@ fun MyPageScreen(
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("개발자님, 환영합니다!", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("${loggedInUser?.name}님, 환영합니다!", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("dev@startup.com", fontSize = 13.sp, color = Color.Gray)
+                            Text(loggedInUser?.userId ?: "", fontSize = 13.sp, color = Color.Gray)
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
@@ -1977,12 +2002,34 @@ fun MyPageScreen(
 
     // 신체 정보 입력 다이얼로그
     if (showBodyInfoDialog) {
+        val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
         BodyInfoDialog(
             primaryColor = primaryGreen,
+            user = loggedInUser,
             onDismiss = { showBodyInfoDialog = false },
-            onCalculate = { calories ->
+            onCalculate = { calories, gender, age, height, weight, activityLvl, goal ->
                 onCaloriesCalculated(calories)
                 showBodyInfoDialog = false
+                
+                // DB Update
+                loggedInUser?.let { user ->
+                    val updatedUser = user.copy(
+                        recommendedCalories = calories,
+                        gender = gender,
+                        age = age,
+                        height = height,
+                        weight = weight,
+                        activityLevel = activityLvl.toString(),
+                        dietGoal = goal
+                    )
+                    coroutineScope.launch(Dispatchers.IO) {
+                        com.example.menu_recipe_app.db.AppDatabase.getDatabase(context).userDao().updateUser(updatedUser)
+                        withContext(Dispatchers.Main) {
+                            onUserUpdated(updatedUser)
+                        }
+                    }
+                }
             }
         )
     }
@@ -1990,13 +2037,18 @@ fun MyPageScreen(
 
 // ★ 신체 정보 입력 및 칼로리 계산 컴포넌트 (식단 목표 및 맞춤 칼로리 로직 추가)
 @Composable
-fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int) -> Unit) {
-    var gender by remember { mutableStateOf("남성") }
-    var age by remember { mutableStateOf("") }
-    var height by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 보통(가벼운 활동)
-    var goal by remember { mutableStateOf("체중 유지") } // ★ 식단 목표 상태 추가
+fun BodyInfoDialog(
+    primaryColor: Color, 
+    user: com.example.menu_recipe_app.db.UserEntity?,
+    onDismiss: () -> Unit, 
+    onCalculate: (Int, String, Int, Float, Float, Float, String) -> Unit
+) {
+    var gender by remember { mutableStateOf(user?.gender?.takeIf { it.isNotBlank() } ?: "남성") }
+    var age by remember { mutableStateOf(if ((user?.age ?: 0) > 0) user!!.age.toString() else "") }
+    var height by remember { mutableStateOf(if ((user?.height ?: 0f) > 0f) user!!.height.toString() else "") }
+    var weight by remember { mutableStateOf(if ((user?.weight ?: 0f) > 0f) user!!.weight.toString() else "") }
+    var activityLevel by remember { mutableStateOf(user?.activityLevel?.toDoubleOrNull() ?: 1.375) } // 기본값: 보통(가벼운 활동)
+    var goal by remember { mutableStateOf(user?.dietGoal?.takeIf { it.isNotBlank() } ?: "체중 유지") } // ★ 식단 목표 상태 추가
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2078,7 +2130,15 @@ fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int
                         }
 
                         // 계산된 최종 값을 메인 상태로 전달 (소수점은 버리고 정수로 변환)
-                        onCalculate(finalCalories.toInt())
+                        onCalculate(
+                            finalCalories.toInt(),
+                            gender,
+                            a,
+                            h.toFloat(),
+                            w.toFloat(),
+                            activityLevel.toFloat(),
+                            goal
+                        )
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor)

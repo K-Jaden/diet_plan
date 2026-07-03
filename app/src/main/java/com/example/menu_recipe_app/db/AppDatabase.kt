@@ -7,11 +7,12 @@ import androidx.room.RoomDatabase
 import com.example.menu_recipe_app.dbimport.RecipeDao
 
 // 사용할 Entity들을 배열로 나열하고, 버전을 적어줍니다.
-@Database(entities = [RecipeEntity::class], version = 1, exportSchema = false)
+@Database(entities = [RecipeEntity::class, UserEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     // DAO를 연결해줍니다.
     abstract fun recipeDao(): RecipeDao
+    abstract fun userDao(): UserDao
 
     // DB 객체는 앱 전체에서 딱 1개만 만들어져야 하므로 Singleton 패턴을 사용합니다.
     companion object {
