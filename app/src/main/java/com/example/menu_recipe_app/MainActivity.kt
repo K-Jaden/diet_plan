@@ -61,18 +61,22 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import coil.compose.AsyncImage
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.lazy.LazyColumn
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -213,8 +217,15 @@ fun AppNavigation() {
         composable("recipe") {
             RecipeScreen(
                 navController = navController,
-                // ★ 클릭 시 해당 레시피의 ID를 상세 화면으로 넘겨줍니다.
                 onNavigateToDetail = { recipeId -> navController.navigate("recipe_detail/$recipeId") }
+            )
+        }
+        composable("search") {
+            RecipeSearchScreen(
+                onRecipeClick = { clickedRecipe ->
+                    // 검색 결과 카드를 클릭하면 해당 레시피의 상세 화면으로 이동!
+                    navController.navigate("recipe_detail/${clickedRecipe.id}")
+                }
             )
         }
         composable(
@@ -528,7 +539,6 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
             onClick = { if (currentRoute != "recipe") navController.navigate("recipe") { popUpTo("main") { saveState = true } } },
             colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
-        // ★ 수정된 부분: MY 탭에도 이동 경로와 색상 효과를 넣어주었습니다!
         NavigationBarItem(
             icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
             label = { Text("MY") },
@@ -1324,16 +1334,19 @@ data class SimpleRecipe(
 // ==========================================
 // ★ 수정된 화면: 레시피 메인 탭 (DB 연동 완료)
 // ==========================================
+// ==========================================
+// ★ 완벽하게 중괄호 짝을 맞춘 RecipeScreen 완성본
+// ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: (Int) -> Unit) {
     val backgroundColor = Color(0xFFFCFCFA)
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // ★ DB에서 불러온 실제 레시피들을 담을 상태 빈 그릇
     var recipeList by remember { mutableStateOf<List<com.example.menu_recipe_app.db.RecipeEntity>>(emptyList()) }
+    // 한글 입력 최적화를 위해 TextFieldValue 상태 사용
+    var searchQuery by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
 
-    // ★ 화면이 처음 켜질 때 DB에서 모든 데이터를 긁어옵니다.
     LaunchedEffect(Unit) {
         val db = com.example.menu_recipe_app.db.AppDatabase.getDatabase(context)
         recipeList = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -1341,51 +1354,133 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
         }
     }
 
+    // 입력된 검색어에 따라 실시간으로 필터링된 레시피 목록 계산
+    val filteredRecipes = remember(searchQuery.text, recipeList) {
+        if (searchQuery.text.isBlank()) {
+            recipeList
+        } else {
+            recipeList.filter { recipe ->
+                recipe.menuName.contains(searchQuery.text, ignoreCase = true) ||
+                recipe.ingredients.contains(searchQuery.text, ignoreCase = true)
+            }
+        }
+    }
+
     Scaffold(
         containerColor = backgroundColor,
         topBar = {
-            TopAppBar(title = { Text("레시피", fontWeight = FontWeight.Bold, fontSize = 20.sp) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor))
+            TopAppBar(
+                title = { Text("레시피", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
         },
         bottomBar = { BottomNavigationBar(navController, "recipe") }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            OutlinedTextField(
-                value = "", onValueChange = {}, placeholder = { Text("어떤 요리를 만들어볼까요?", color = Color.Gray, fontSize = 14.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "검색", tint = Color.Gray) },
-                colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, focusedContainerColor = Color.White, unfocusedBorderColor = Color(0xFFEEEEEE)),
-                shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
-            )
+
+            // 검색창 영역: 별도의 화면으로 이동하지 않고 실시간 필터링
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            "어떤 요리를 만들어볼까요?",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "검색",
+                            tint = Color.Gray
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.text.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = androidx.compose.ui.text.input.TextFieldValue("") }) {
+                                Icon(
+                                    Icons.Default.Clear,
+                                    contentDescription = "검색어 지우기",
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        focusedBorderColor = Color(0xFF5A8754),
+                        unfocusedBorderColor = Color(0xFFEEEEEE)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             if (recipeList.isEmpty()) {
-                // DB가 비어있을 때 안내 문구
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("아직 등록된 레시피가 없습니다.", color = Color.Gray)
                 }
+            } else if (filteredRecipes.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("'${searchQuery.text}'에 대한 검색 결과가 없습니다.", color = Color.Gray)
+                }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    items(recipeList.size) { index ->
-                        val recipe = recipeList[index]
+                    items(filteredRecipes.size) { index ->
+                        val recipe = filteredRecipes[index]
 
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onNavigateToDetail(recipe.id) }) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { onNavigateToDetail(recipe.id) }
+                        ) {
                             if (recipe.imageUrl.isNullOrBlank()) {
-                                // 이미지가 없을 때 띄워줄 임시 아이콘
-                                Box(modifier = Modifier.size(90.dp).clip(CircleShape).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray)
+                                Box(
+                                    modifier = Modifier
+                                        .size(90.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFF0F0F0)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.RestaurantMenu,
+                                        contentDescription = null,
+                                        tint = Color.LightGray
+                                    )
                                 }
                             } else {
                                 AsyncImage(
                                     model = recipe.imageUrl,
                                     contentDescription = recipe.menuName,
-                                    modifier = Modifier.size(90.dp).clip(CircleShape).background(Color(0xFFF0F0F0)),
+                                    modifier = Modifier
+                                        .size(90.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFF0F0F0)),
                                     contentScale = ContentScale.Crop
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(recipe.menuName, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                            Text(
+                                text = recipe.menuName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
@@ -1904,6 +1999,84 @@ fun MyPageMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title:
         }
         if (!isDanger) {
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecipeSearchScreen(
+    onRecipeClick: (RecipeEntity) -> Unit = {} // 레시피 클릭 시 상세화면 이동용
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
+    // 1. 검색창 텍스트 상태
+    var searchQuery by remember { mutableStateOf("") }
+
+    // 2. 검색된 레시피 목록을 담을 상태
+    var searchResults by remember { mutableStateOf<List<RecipeEntity>>(emptyList()) }
+
+    // 3. DB 검색을 실행하는 함수
+    fun performSearch(query: String) {
+        lifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(context)
+            val results = if (query.isBlank()) {
+                emptyList() // 검색어가 비어있으면 목록 안 보임
+            } else {
+                db.recipeDao().searchRecipes(query)
+            }
+            // 화면 UI 업데이트는 Main 스레드에서 반영
+            withContext(Dispatchers.Main) {
+                searchResults = results
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        // --- [검색 입력창] ---
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { newText ->
+                searchQuery = newText      // 타이핑할 때마다 글자 반영
+                performSearch(newText)     // 실시간 DB 검색 실행!
+            },
+            label = { Text("레시피 또는 재료 검색") },
+            placeholder = { Text("예: 김치, 돼지고기, 찌개") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- [검색 결과 영역] ---
+        if (searchQuery.isNotBlank() && searchResults.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("'$searchQuery'에 대한 검색 결과가 없습니다.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                // ★ 수정된 부분: 타입 에러를 방지하기 위해 개수(size)만큼 돌리고 인덱스로 직접 꺼냅니다!
+                items(searchResults.size) { index ->
+                    val recipe = searchResults[index]
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .clickable { onRecipeClick(recipe) },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = recipe.menuName, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = "재료: ${recipe.ingredients}", fontSize = 14.sp, color = Color.DarkGray, maxLines = 1)
+                        }
+                    }
+                }
+            }
         }
     }
 }
