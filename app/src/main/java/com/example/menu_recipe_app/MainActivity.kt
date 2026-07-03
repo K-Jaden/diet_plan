@@ -136,8 +136,10 @@ class MainActivity : ComponentActivity() {
         }
         // ==========================================
         setContent {
-            MaterialTheme {
-                AppNavigation()
+            var isDarkMode by remember { mutableStateOf(false) }
+            val colorScheme = if (isDarkMode) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
+            MaterialTheme(colorScheme = colorScheme) {
+                AppNavigation(isDarkMode = isDarkMode, onDarkModeChange = { isDarkMode = it })
             }
         }
     }
@@ -147,7 +149,7 @@ class MainActivity : ComponentActivity() {
 // 1. 네비게이션 라우터 (5단계 프로세스로 확장 적용)
 // ==========================================
 @Composable
-fun AppNavigation() {
+fun AppNavigation(isDarkMode: Boolean = false, onDarkModeChange: (Boolean) -> Unit = {}) {
     val navController = androidx.navigation.compose.rememberNavController()
 
     // ★ 전역 상태 관리
@@ -242,6 +244,7 @@ fun AppNavigation() {
         composable("my") {
             MyPageScreen(
                 navController = navController, isLoggedIn = isLoggedIn, ticketCount = ticketCount, userCalories = userCalories,
+                isDarkMode = isDarkMode, onDarkModeChange = onDarkModeChange,
                 onLoginClick = { isLoggedIn = true }, onLogoutClick = { isLoggedIn = false; userCalories = null }, onCaloriesCalculated = { calculated -> userCalories = calculated }
             )
         }
@@ -1877,6 +1880,8 @@ fun MyPageScreen(
     isLoggedIn: Boolean,
     ticketCount: Int,
     userCalories: Int?,
+    isDarkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
     onCaloriesCalculated: (Int) -> Unit
@@ -1964,9 +1969,7 @@ fun MyPageScreen(
 
             Column(modifier = Modifier.padding(top = 16.dp)) {
                 Text("설정 및 안내", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-                MyPageMenuItem(icon = Icons.Default.Campaign, title = "공지사항", onClick = {})
-                MyPageMenuItem(icon = Icons.Default.HeadsetMic, title = "고객센터 / 피드백", onClick = {})
-                MyPageMenuItem(icon = Icons.Default.Settings, title = "앱 설정", onClick = {})
+                MyPageToggleItem(icon = Icons.Default.Settings, title = "다크모드", checked = isDarkMode, onCheckedChange = onDarkModeChange)
                 if (isLoggedIn) {
                     MyPageMenuItem(icon = Icons.Default.CreditCard, title = "결제 내역", onClick = {})
                     MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = {}, isDanger = true)
@@ -2107,6 +2110,22 @@ fun MyPageMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title:
         if (!isDanger) {
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(20.dp))
         }
+    }
+}
+
+@Composable
+fun MyPageToggleItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = Color.DarkGray, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(title, fontSize = 15.sp, color = Color.DarkGray)
+        }
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
