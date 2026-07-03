@@ -1915,6 +1915,9 @@ fun MyPageScreen(
     // 회원 탈퇴 팝업 상태
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     Scaffold(
         containerColor = backgroundColor,
         topBar = { TopAppBar(title = { Text("마이페이지", fontWeight = FontWeight.Bold, fontSize = 20.sp) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
@@ -2005,8 +2008,6 @@ fun MyPageScreen(
 
     // 신체 정보 입력 다이얼로그
     if (showBodyInfoDialog) {
-        val context = LocalContext.current
-        val coroutineScope = rememberCoroutineScope()
         BodyInfoDialog(
             primaryColor = primaryGreen,
             user = loggedInUser,
@@ -2039,8 +2040,6 @@ fun MyPageScreen(
 
     // 회원 탈퇴 확인 다이얼로그
     if (showDeleteConfirmDialog) {
-        val context = LocalContext.current
-        val coroutineScope = rememberCoroutineScope()
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
             containerColor = Color.White,
