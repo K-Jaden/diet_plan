@@ -1911,6 +1911,9 @@ fun MyPageScreen(
 
     // 신체 정보 입력 팝업 상태
     var showBodyInfoDialog by remember { mutableStateOf(false) }
+    
+    // 회원 탈퇴 팝업 상태
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1994,7 +1997,7 @@ fun MyPageScreen(
                 MyPageMenuItem(icon = Icons.Default.Settings, title = "앱 설정", onClick = {})
                 if (isLoggedIn) {
                     MyPageMenuItem(icon = Icons.Default.CreditCard, title = "결제 내역", onClick = {})
-                    MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = {}, isDanger = true)
+                    MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = { showDeleteConfirmDialog = true }, isDanger = true)
                 }
             }
         }
@@ -2030,6 +2033,37 @@ fun MyPageScreen(
                         }
                     }
                 }
+            }
+        )
+    }
+
+    // 회원 탈퇴 확인 다이얼로그
+    if (showDeleteConfirmDialog) {
+        val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            containerColor = Color.White,
+            title = { Text("회원 탈퇴", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = { Text("정말 탈퇴하시겠습니까?\n탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다.", fontSize = 14.sp) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        loggedInUser?.let { user ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                com.example.menu_recipe_app.db.AppDatabase.getDatabase(context).userDao().deleteUser(user)
+                                withContext(Dispatchers.Main) {
+                                    android.widget.Toast.makeText(context, "회원탈퇴가 완료되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                                    onLogoutClick()
+                                }
+                            }
+                        }
+                    }
+                ) { Text("탈퇴", color = Color(0xFFE53935), fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("취소", color = Color.Gray) }
             }
         )
     }

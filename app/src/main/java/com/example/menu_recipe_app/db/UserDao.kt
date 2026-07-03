@@ -24,7 +24,10 @@ interface UserDao {
     @Query("SELECT * FROM user_table WHERE id = :id")
     suspend fun getUserById(id: Int): UserEntity?
 
-    // 내 정보 업데이트
     @Update
     suspend fun updateUser(user: UserEntity)
+
+    // 회원 탈퇴
+    @androidx.room.Delete
+    suspend fun deleteUser(user: UserEntity)
 }
