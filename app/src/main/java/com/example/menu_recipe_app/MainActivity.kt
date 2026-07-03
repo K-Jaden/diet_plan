@@ -1,4 +1,4 @@
-﻿package com.example.menu_recipe_app // ★ 본인 패키지명으로 꼭 확인하세요!
+package com.example.menu_recipe_app // ★ 본인 패키지명으로 꼭 확인하세요!
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -526,28 +526,28 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
             label = { Text("홈") },
             selected = currentRoute == "main",
             onClick = { if (currentRoute != "main") navController.navigate("main") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "캘린더") },
             label = { Text("캘린더") },
             selected = currentRoute == "calendar",
             onClick = { if (currentRoute != "calendar") navController.navigate("calendar") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "레시피") },
             label = { Text("레시피") },
             selected = currentRoute == "recipe",
             onClick = { if (currentRoute != "recipe") navController.navigate("recipe") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
             label = { Text("MY") },
             selected = currentRoute == "my",
             onClick = { if (currentRoute != "my") navController.navigate("my") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
     }
 }
