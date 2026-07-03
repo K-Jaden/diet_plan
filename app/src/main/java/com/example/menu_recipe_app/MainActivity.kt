@@ -526,28 +526,28 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
             label = { Text("홈") },
             selected = currentRoute == "main",
             onClick = { if (currentRoute != "main") navController.navigate("main") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "캘린더") },
             label = { Text("캘린더") },
             selected = currentRoute == "calendar",
             onClick = { if (currentRoute != "calendar") navController.navigate("calendar") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "레시피") },
             label = { Text("레시피") },
             selected = currentRoute == "recipe",
             onClick = { if (currentRoute != "recipe") navController.navigate("recipe") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
         NavigationBarItem(
             icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
             label = { Text("MY") },
             selected = currentRoute == "my",
             onClick = { if (currentRoute != "my") navController.navigate("my") { popUpTo("main") { saveState = true } } },
-            colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
+            colors = NavigationBarItemDefaults.colors(selectediconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
     }
 }
@@ -721,7 +721,7 @@ fun GenerateStep2Screen(hasIngredients: Boolean, userCalories: Int?, onBackClick
                                 }
                             }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = primaryGreen) }
                         },
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedcontainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedcontainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -786,7 +786,7 @@ fun GenerateStep2Screen(hasIngredients: Boolean, userCalories: Int?, onBackClick
                             }
                         }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = Color(0xFFE53935)) }
                     },
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFFE53935), unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedcontainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedcontainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFFE53935), unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(), singleLine = true
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1237,7 +1237,7 @@ fun GenerateStep4Screen(ticketCount: Int, onDeductTicket: (Int) -> Unit, onBackC
                         OutlinedButton(
                             onClick = { showRegenDialog = true },
                             border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentcolor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface),
                             modifier = Modifier.weight(1f).height(50.dp)
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -1245,7 +1245,7 @@ fun GenerateStep4Screen(ticketCount: Int, onDeductTicket: (Int) -> Unit, onBackC
                             val btnText = if (remainingFreeCount > 0) "다시 생성 (무료 ${remainingFreeCount}번)" else "다시 생성 (🎫 $currentRegenCost)"
                             Text(btnText, fontSize = 13.sp)
                         }
-                        OutlinedButton(onClick = onChangeAgentClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentcolor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.weight(1f).height(50.dp)) {
+                        OutlinedButton(onClick = onChangeAgentClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.weight(1f).height(50.dp)) {
                             Icon(Icons.Default.PersonOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("다른 영양사 선택", fontSize = 13.sp)
@@ -1403,7 +1403,7 @@ fun GenerateStep5Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEd
                     Text("메인으로 가기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(onClick = onEditClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentcolor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                OutlinedButton(onClick = onEditClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().height(56.dp)) {
                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("식단 수정하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -1523,8 +1523,8 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
                         }
                     },
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedcontainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                        unfocusedcontainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                        focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
                         focusedBorderColor = Color(0xFF5A8754),
                         unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
                     ),
@@ -1841,7 +1841,7 @@ fun TicketShopSheetContent(primaryColor: Color, onBuySuccess: (Int) -> Unit) {
             title = "광고 보고 1장 받기",
             price = "무료",
             description = "짧은 영상 시청 후 즉시 지급",
-            iconcolor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            iconColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             onClick = { onBuySuccess(1) }
         )
     }
