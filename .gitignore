@@ -16,3 +16,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Claude Code local config (personal workflow, not shared via git)
+CLAUDE.md
+.claude/
