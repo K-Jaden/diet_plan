@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 
 // 사용할 Entity들을 배열로 나열하고, 버전을 적어줍니다.
-@Database(entities = [RecipeEntity::class], version = 1, exportSchema = false)
+@Database(entities = [RecipeEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     // DAO를 연결해줍니다.

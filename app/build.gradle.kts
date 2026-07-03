@@ -1,7 +1,14 @@
+import java.util.Properties
+
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp") version "2.2.10-2.0.2"
+}
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
 android {
@@ -18,6 +25,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "RECIPE_API_KEY", "\"${localProperties.getProperty("RECIPE_API_KEY", "")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

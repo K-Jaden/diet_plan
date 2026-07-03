@@ -51,6 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.example.menu_recipe_app.db.AppDatabase
 import com.example.menu_recipe_app.db.RecipeEntity
+import com.example.menu_recipe_app.repository.RecipePrefetcher
 import com.example.menu_recipe_app.ui.recipe.RecipeDetailScreen
 import com.example.menu_recipe_app.ui.recipe.RecipeScreen
 
@@ -116,11 +117,23 @@ fun AppNavigation() {
             )
         }
         composable("generate_step3") {
+            val context = androidx.compose.ui.platform.LocalContext.current
             GenerateStep3Screen(
                 ticketCount = ticketCount,
                 onDeductTicket = { amount -> ticketCount -= amount },
                 onBackClick = { navController.popBackStack() },
-                onSaveClick = { navController.navigate("generate_step4") },
+                onSaveClick = {
+                    // ★ 식단표 저장 시 레시피 백그라운드 프리페치 시작
+                    // TODO(D/E): 에이전트 완성 후 아래 리스트를 실제 생성된 식단 메뉴로 교체
+                    RecipePrefetcher.prefetch(
+                        context,
+                        listOf(
+                            "된장국", "계란말이", "시금치나물",
+                            "닭가슴살볶음", "나물무침", "두부조림", "브로콜리무침"
+                        )
+                    )
+                    navController.navigate("generate_step4")
+                },
                 onChangeAgentClick = { navController.popBackStack() }
             )
         }
