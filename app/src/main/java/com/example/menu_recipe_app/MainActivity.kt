@@ -47,44 +47,26 @@ import androidx.compose.ui.layout.ContentScale
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import com.example.menu_recipe_app.db.AppDatabase
 import com.example.menu_recipe_app.db.RecipeEntity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.MaterialTheme
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import coil.compose.AsyncImage
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.foundation.lazy.LazyColumn
+import com.example.menu_recipe_app.db.MealEntity
+import com.example.menu_recipe_app.viewmodel.DietViewModel
+import com.example.menu_recipe_app.viewmodel.DietViewModelFactory
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // ==========================================
-        // ★ 공공데이터 API 연동 및 Room DB 저장 로직
-        // ==========================================
+
         lifecycleScope.launch(Dispatchers.IO) {
             val db = com.example.menu_recipe_app.db.AppDatabase.getDatabase(applicationContext)
             val dao = db.recipeDao()
@@ -139,20 +121,31 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(false) }
             val colorScheme = if (isDarkMode) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
             MaterialTheme(colorScheme = colorScheme) {
-                AppNavigation(isDarkMode = isDarkMode, onDarkModeChange = { isDarkMode = it })
+                // 1. DB와 Dao 가져오기
+                val db = AppDatabase.getDatabase(applicationContext)
+                val mealDao = db.mealDao()
+                val userProfileDao = db.userProfileDao()
+                val recipeDao = db.recipeDao() // ★ 추가
+
+                // 2. ViewModel 생성하기
+                val dietViewModel: DietViewModel = viewModel(
+                    factory = DietViewModelFactory(mealDao, userProfileDao, recipeDao) // ★ 레시피 DAO 넣기
+                )
+
+                // 3. Navigation에 ViewModel 넘겨주기
+                AppNavigation(dietViewModel = dietViewModel, isDarkMode = isDarkMode, onDarkModeChange = { isDarkMode = it })
             }
         }
     }
-}
 
 // ==========================================
-// 1. 네비게이션 라우터 (5단계 프로세스로 확장 적용)
+// 1. 네비게이션 라우터 (로그인 및 칼로리 상태 연동)
 // ==========================================
 @Composable
-fun AppNavigation(isDarkMode: Boolean = false, onDarkModeChange: (Boolean) -> Unit = {}) {
+fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onDarkModeChange: (Boolean) -> Unit = {}) {
     val navController = androidx.navigation.compose.rememberNavController()
 
-    // ★ 전역 상태 관리
+    // ★ 기존에 잘 만들어두신 전역 상태 관리 그대로 유지!
     var ticketCount by remember { mutableIntStateOf(5) }
     var isLoggedIn by remember { mutableStateOf(false) }
     var userCalories by remember { mutableStateOf<Int?>(null) }
@@ -161,14 +154,18 @@ fun AppNavigation(isDarkMode: Boolean = false, onDarkModeChange: (Boolean) -> Un
         composable("main") {
             MainScreen(
                 navController = navController,
+                dietViewModel = dietViewModel, // ★ 2. MainScreen으로 ViewModel 전달
                 ticketCount = ticketCount,
                 onTicketAdd = { added -> ticketCount += added },
                 onNavigateToGenerate = { navController.navigate("generate_step1") },
                 onNavigateToCalendar = { navController.navigate("calendar") }
+
             )
         }
+        // AppNavigation 내부 수정
         composable("generate_step1") {
             GenerateStep1Screen(
+                dietViewModel = dietViewModel, // ★ 추가됨
                 onBackClick = { navController.popBackStack() },
                 onNextClick = { hasIngredients -> navController.navigate("generate_step2/$hasIngredients") }
             )
@@ -179,80 +176,88 @@ fun AppNavigation(isDarkMode: Boolean = false, onDarkModeChange: (Boolean) -> Un
         ) { backStackEntry ->
             val hasIngredients = backStackEntry.arguments?.getBoolean("hasIngredients") ?: false
             GenerateStep2Screen(
+                dietViewModel = dietViewModel, // ★ 추가됨
                 hasIngredients = hasIngredients,
-                userCalories = userCalories,
-                onBackClick = { navController.popBackStack() },
-                onNextClick = { navController.navigate("generate_step3") } // ★ 다음 단계(영양사 선택)로 이동
-            )
-        }
-        composable("generate_step3") {
-            // ★ 새로 추가된 영양사 선택 단계 (여기서 티켓 결제)
-            GenerateStep3Screen(
                 ticketCount = ticketCount,
+                userCalories = userCalories,
                 onBackClick = { navController.popBackStack() },
                 onNextClick = {
                     if (ticketCount >= 3) {
                         ticketCount -= 3
-                        navController.navigate("generate_step4") // 식단 확인으로 이동
+                        navController.navigate("generate_step3")
                     }
                 }
             )
         }
-        composable("generate_step4") {
-            // ★ 기존의 Step 3 (식단 확인)
-            GenerateStep4Screen(
+        composable("generate_step3") {
+            GenerateStep3Screen(
                 ticketCount = ticketCount,
                 onDeductTicket = { amount -> ticketCount -= amount },
                 onBackClick = { navController.popBackStack() },
-                onSaveClick = { navController.navigate("generate_step5") }, // 완료 화면으로 이동
+                // ★ 에러 방지: generatedMeals를 받아 저장!
+                onSaveClick = { generatedMeals ->
+                    dietViewModel.saveGeneratedMeals(generatedMeals)
+                    navController.navigate("generate_step4")
+                },
                 onChangeAgentClick = { navController.popBackStack() }
             )
         }
-        composable("generate_step5") {
-            // ★ 기존의 Step 4 (완료)
-            GenerateStep5Screen(
-                onBackClick = { navController.popBackStack() },
-                onGoMainClick = { navController.navigate("main") { popUpTo("main") { inclusive = false } } },
-                onEditClick = { navController.popBackStack() }
-            )
+        composable("generate_step4") {
+            GenerateStep4Screen(onBackClick = { navController.popBackStack() }, onGoMainClick = { navController.navigate("main") { popUpTo("main") { inclusive = false } } }, onEditClick = { navController.popBackStack() })
         }
         composable("recipe") {
             RecipeScreen(
                 navController = navController,
-                onNavigateToDetail = { recipeId -> navController.navigate("recipe_detail/$recipeId") }
+                // ★ 여기서 받은 menuName을 상세 화면 경로로 넘겨줍니다.
+                onNavigateToDetail = { menuName -> navController.navigate("recipe_detail/$menuName") }
+            )
+        }
+        composable(
+            route = "recipe_detail/{menuName}", // 파라미터 경로 등록
+            arguments = listOf(navArgument("menuName") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val menuName = backStackEntry.arguments?.getString("menuName") ?: "알 수 없는 요리"
+            RecipeDetailScreen(
+                menuName = menuName,
+                viewModel = dietViewModel, // ★ 뷰모델 파라미터 전달!
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        // AppNavigation 내부
+        composable("calendar") {
+            CalendarScreen(
+                navController = navController,
+                dietViewModel = dietViewModel // ★ 여기서 넘겨줌!
+            )
+        }
+        composable("my") {
+            MyPageScreen(
+                navController = navController,
+                isLoggedIn = isLoggedIn,
+                ticketCount = ticketCount,
+                userCalories = userCalories, // ★ 마이페이지로 칼로리 전달
+                isDarkMode = isDarkMode,
+                onDarkModeChange = onDarkModeChange,
+                onLoginClick = { isLoggedIn = true },
+                onLogoutClick = {
+                    isLoggedIn = false
+                    userCalories = null // 로그아웃 시 칼로리 정보 초기화
+                },
+                onCaloriesCalculated = { calculated -> userCalories = calculated } // ★ 계산 완료 시 상태 업데이트
             )
         }
         composable("search") {
             RecipeSearchScreen(
                 onRecipeClick = { clickedRecipe ->
-                    // 검색 결과 카드를 클릭하면 해당 레시피의 상세 화면으로 이동!
-                    navController.navigate("recipe_detail/${clickedRecipe.id}")
+                    navController.navigate("recipe_detail/${clickedRecipe.menuName}")
                 }
-            )
-        }
-        composable(
-            route = "recipe_detail/{recipeId}",
-            arguments = listOf(androidx.navigation.navArgument("recipeId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            // ★ 넘겨받은 ID를 상세 화면 컴포넌트에 주입합니다.
-            val recipeId = backStackEntry.arguments?.getInt("recipeId") ?: 0
-            RecipeDetailScreen(recipeId = recipeId, onBackClick = { navController.popBackStack() })
-        }
-        composable("calendar") {
-            CalendarScreen(navController = navController)
-        }
-        composable("my") {
-            MyPageScreen(
-                navController = navController, isLoggedIn = isLoggedIn, ticketCount = ticketCount, userCalories = userCalories,
-                isDarkMode = isDarkMode, onDarkModeChange = onDarkModeChange,
-                onLoginClick = { isLoggedIn = true }, onLogoutClick = { isLoggedIn = false; userCalories = null }, onCaloriesCalculated = { calculated -> userCalories = calculated }
             )
         }
     }
 }
 
 // ==========================================
-// 공통 컴포넌트: 스마트한 진행 단계 표시기 (5단계로 업데이트)
+// 공통 컴포넌트: 스마트한 진행 단계 표시기
 // ==========================================
 @Composable
 fun StepIndicator(currentStep: Int) {
@@ -261,8 +266,7 @@ fun StepIndicator(currentStep: Int) {
     val textGray = Color.Gray
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        // ★ 5단계로 리스트 수정
-        val steps = listOf("재료 선택", "기본 설정", "영양사 선택", "식단 확인", "완료")
+        val steps = listOf("재료 선택", "식단 유형", "식단 확인", "완료")
         steps.forEachIndexed { index, title ->
             val stepNumber = index + 1
             val isCompleted = stepNumber < currentStep
@@ -276,7 +280,7 @@ fun StepIndicator(currentStep: Int) {
                 Text(title, fontSize = 10.sp, color = if (isActive || isCompleted) primaryGreen else textGray, modifier = Modifier.padding(top = 4.dp))
             }
             if (index < steps.size - 1) {
-                HorizontalDivider(modifier = Modifier.width(24.dp).padding(horizontal = 4.dp).offset(y = (-8).dp), color = if (isCompleted) primaryGreen else grayColor, thickness = 1.dp)
+                HorizontalDivider(modifier = Modifier.width(40.dp).padding(horizontal = 4.dp).offset(y = (-8).dp), color = if (isCompleted) primaryGreen else grayColor, thickness = 1.dp)
             }
         }
     }
@@ -323,15 +327,23 @@ fun TopHeaderSection(primaryColor: Color, ticketCount: Int, onTicketClick: () ->
 @Composable
 fun MainScreen(
     navController: androidx.navigation.NavController,
-    ticketCount: Int,              // ★ 지갑 잔액 받아옴
-    onTicketAdd: (Int) -> Unit,    // ★ 충전 기능 받아옴
+    dietViewModel: DietViewModel,  // ViewModel 주입됨
+    ticketCount: Int,
+    onTicketAdd: (Int) -> Unit,
     onNavigateToGenerate: () -> Unit,
     onNavigateToCalendar: () -> Unit
+
 ) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
 
     var showTicketSheet by remember { mutableStateOf(false) }
+
+    // ★ 수정됨: todayMeals 대신 selectedDateMeals 사용!
+    val selectedDateMeals by dietViewModel.selectedDateMeals.collectAsState()
+    val selectedDate by dietViewModel.currentSelectedDate.collectAsState()
+
+    val hasDietPlan = selectedDateMeals.isNotEmpty()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -347,15 +359,41 @@ fun MainScreen(
                 onTicketClick = { showTicketSheet = true }
             )
             Spacer(modifier = Modifier.height(24.dp))
-            WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
+
+            // ===============================================
+            if (!hasDietPlan) {
+                WeeklyGenerateCard(primaryGreen, onNavigateToGenerate)
+            } else {
+                // 식단이 있을 때: 테스트용 UI (추후 기획하신 진짜 UI로 교체 예정)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        // ★ 수정됨: selectedDateMeals 로 변경
+                        text = "오늘의 식단이 존재합니다! 메뉴: ${selectedDateMeals.first().menuName}",
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+            // ===============================================
+
             Spacer(modifier = Modifier.height(24.dp))
-            CalendarCard(onNavigateToCalendar = onNavigateToCalendar)
+
+            // MainScreen 내부에서 CalendarCard 부르는 곳 교체
+            CalendarCard(
+                selectedDate = selectedDate,
+                onDateSelected = { clickedDate ->
+                    dietViewModel.fetchMealsForDate(clickedDate)
+                },
+                onNavigateToCalendar = onNavigateToCalendar,
+                dietViewModel = dietViewModel // ★ 파라미터 추가!
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
             IngredientsCard()
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
+    // 티켓 바텀 시트 (기존 코드 유지)
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     if (showTicketSheet) {
@@ -367,7 +405,7 @@ fun MainScreen(
             TicketShopSheetContent(
                 primaryColor = primaryGreen,
                 onBuySuccess = { addedTickets ->
-                    onTicketAdd(addedTickets) // ★ 지갑에 돈 채우기
+                    onTicketAdd(addedTickets)
                     showTicketSheet = false
                 }
             )
@@ -392,104 +430,114 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
     }
 }
 
+    // ==========================================
+// 캘린더 카드 컴포넌트 (DB 연동 버전)
 // ==========================================
-// 캘린더 카드 컴포넌트 (더보기 버튼 추가 완료)
-// ==========================================
-@Composable
-fun CalendarCard(onNavigateToCalendar: () -> Unit) { // ★ 파라미터 구멍 뚫기 완료!
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
-    val primaryGreen = Color(0xFF5A8754)
+    @Composable
+    fun CalendarCard(
+        selectedDate: LocalDate,
+        onDateSelected: (LocalDate) -> Unit,
+        onNavigateToCalendar: () -> Unit,
+        dietViewModel: DietViewModel // ★ 에러 원인 2 해결: 파라미터 추가!
+    ) {
+        var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+        val primaryGreen = Color(0xFF5A8754)
 
-    Card(colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            // [상단 영역] 제목 & 더보기 버튼 & 화살표
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        LaunchedEffect(currentMonth) {
+            dietViewModel.fetchMealsForMonth(currentMonth)
+        }
+
+        val monthMeals by dietViewModel.currentMonthMeals.collectAsState()
+        val plannedDates = remember(monthMeals) {
+            monthMeals.map { LocalDate.parse(it.date) }.toSet()
+        }
+
+        Card(colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.DateRange, contentDescription = null, tint = primaryGreen)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("캘린더", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("더보기 >", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { onNavigateToCalendar() }.padding(4.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.ChevronLeft, contentDescription = "이전 달") }
+                        Text(text = "${currentMonth.year}년 ${currentMonth.monthValue}월", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                        IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.ChevronRight, contentDescription = "다음 달") }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("식단 계획", fontSize = 10.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "더보기 >",
-                        fontSize = 12.sp,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.clickable { onNavigateToCalendar() }.padding(4.dp)
-                    )
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF8D6E63)))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("기록", fontSize = 10.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "이전 달")
-                    }
-                    Text(text = "${currentMonth.year}년 ${currentMonth.monthValue}월", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
-                    IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "다음 달")
+                Spacer(modifier = Modifier.height(16.dp))
+
+                val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                    daysOfWeek.forEachIndexed { index, day ->
+                        val color = when (index) { 0 -> Color.Red; 6 -> Color(0xFF1976D2); else -> Color.DarkGray }
+                        Text(text = day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
                     }
                 }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // [범례] 식단 계획 / 기록
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(primaryGreen))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("식단 계획", fontSize = 10.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.width(12.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF8D6E63)))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("기록", fontSize = 10.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+                val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
+                val daysInMonth = currentMonth.lengthOfMonth()
+                val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
 
-            // [요일 표시]
-            val daysOfWeek = listOf("일", "월", "화", "수", "목", "금", "토")
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                daysOfWeek.forEachIndexed { index, day ->
-                    val color = when (index) { 0 -> Color.Red; 6 -> Color(0xFF1976D2); else -> Color.DarkGray }
-                    Text(text = day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = color)
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // [달력 그리드 날짜 배치]
-            val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
-            val daysInMonth = currentMonth.lengthOfMonth()
-            val totalCells = ((firstDayOfWeek + daysInMonth - 1) / 7 + 1) * 7
-
-            LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), userScrollEnabled = false) {
-                items(totalCells) { index ->
-                    val dayOffset = index - firstDayOfWeek + 1
-                    if (dayOffset in 1..daysInMonth) {
-                        val date = currentMonth.atDay(dayOffset)
-                        CalendarDayItem(date = date, isSelected = date == selectedDate, onClick = { selectedDate = date }, primaryGreen = primaryGreen)
-                    } else {
-                        Box(modifier = Modifier.size(48.dp))
+                LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.heightIn(min = 250.dp, max = 320.dp), userScrollEnabled = false) {
+                    items(totalCells) { index ->
+                        val dayOffset = index - firstDayOfWeek + 1
+                        if (dayOffset in 1..daysInMonth) {
+                            val date = currentMonth.atDay(dayOffset)
+                            CalendarDayItem(
+                                date = date,
+                                isSelected = date == selectedDate,
+                                hasPlan = plannedDates.contains(date),
+                                onClick = { onDateSelected(date) },
+                                primaryGreen = primaryGreen
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(48.dp))
+                        }
                     }
                 }
             }
         }
     }
-}
 
-@Composable
-fun CalendarDayItem(date: LocalDate, isSelected: Boolean, onClick: () -> Unit, primaryGreen: Color) {
-    val hasPlan = date.dayOfMonth % 2 != 0 || date.dayOfMonth % 5 == 0
-    val hasRecord = date.dayOfMonth % 3 == 0
+    @Composable
+    fun CalendarDayItem(
+        date: LocalDate,
+        isSelected: Boolean,
+        hasPlan: Boolean, // ★ 가짜 로직 대신 외부에서 받아오도록 파라미터 추가
+        onClick: () -> Unit,
+        primaryGreen: Color
+    ) {
+        val hasRecord = false // 섭취 완료 표시는 나중을 위해 false 처리
 
-    Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
-            Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
-        }
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-            if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
-            if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
-            if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
-            if (!hasPlan && !hasRecord) Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
+        Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
+                Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
+                if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
+                if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
+                if (!hasPlan && !hasRecord) Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
+            }
         }
     }
-}
-
 @Composable
 fun IngredientsCard() {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -542,6 +590,7 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
             onClick = { if (currentRoute != "recipe") navController.navigate("recipe") { popUpTo("main") { saveState = true } } },
             colors = NavigationBarItemDefaults.colors(selectedIconColor = primaryGreen, selectedTextColor = primaryGreen, indicatorColor = Color(0xFFE8F5E9))
         )
+        // ★ 수정된 부분: MY 탭에도 이동 경로와 색상 효과를 넣어주었습니다!
         NavigationBarItem(
             icon = { Icon(Icons.Default.Person, contentDescription = "MY") },
             label = { Text("MY") },
@@ -552,16 +601,25 @@ fun BottomNavigationBar(navController: androidx.navigation.NavController, curren
     }
 }
 
-// ==========================================
-// 1단계: 재료 선택 (재료 유무만 선택하도록 간소화)
+/// ==========================================
+// 1단계: 재료 선택 (UI 배치 및 알레르기 분리 완벽 적용)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit) {
+fun GenerateStep1Screen(dietViewModel: DietViewModel, onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
 
+    // 상태 변수들
     var selectedOption by remember { mutableStateOf<String?>(null) }
+    var textInput by remember { mutableStateOf("") }
+    val myIngredients = remember { mutableStateListOf<String>() }
+    val recommendedIngredients = listOf("계란", "양파", "대파", "마늘", "두부", "닭가슴살", "돼지고기", "감자")
+
+    // 알레르기/기피 음식 관련 상태 변수들
+    var dislikedInput by remember { mutableStateOf("") }
+    val dislikedIngredients = remember { mutableStateListOf<String>() }
+    val commonDisliked = listOf("오이", "가지", "고수", "버섯", "피망", "견과류", "갑각류", "복숭아", "우유", "밀가루")
 
     Scaffold(
         containerColor = backgroundColor,
@@ -575,13 +633,17 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit)
         },
         bottomBar = {
             Button(
-                onClick = { onNextClick(selectedOption == "있음") },
-                enabled = selectedOption != null,
+                onClick = {
+                    // ★ 1단계: 기피 재료를 콤마로 연결해서 ViewModel에 임시 저장!
+                    dietViewModel.tempAllergies = dislikedIngredients.joinToString(",")
+                    onNextClick(selectedOption == "있음")
+                },
+                enabled = selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty()),
                 colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFE0E0E0)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().padding(20.dp).height(56.dp)
             ) {
-                Text("다음 단계로", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption != null) Color.White else Color.Gray)
+                Text("다음", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption == "없음" || (selectedOption == "있음" && myIngredients.isNotEmpty())) Color.White else Color.Gray)
             }
         }
     ) { innerPadding ->
@@ -604,6 +666,160 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit)
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 없음", description = "보유한 재료 없이\n식단을 추천받을래요.", isSelected = selectedOption == "없음", onClick = { selectedOption = "없음" }, primaryColor = primaryGreen)
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 있음", description = "가지고 있는 재료로\n식단을 추천받을래요.", isSelected = selectedOption == "있음", onClick = { selectedOption = "있음" }, primaryColor = primaryGreen)
             }
+
+            // ==========================================
+            // [영역 1] 재료 있음을 선택했을 때만 나오는 보유 재료 입력칸
+            // ==========================================
+            if (selectedOption == "있음") {
+                Spacer(modifier = Modifier.height(32.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(24.dp))
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
+                    Text("어떤 재료가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = textInput,
+                        onValueChange = { textInput = it },
+                        placeholder = { Text("재료 직접 입력 (예: 브로콜리)", color = Color.LightGray, fontSize = 14.sp) },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                if (textInput.isNotBlank() && !myIngredients.contains(textInput.trim())) {
+                                    myIngredients.add(textInput.trim())
+                                    textInput = ""
+                                }
+                            }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = primaryGreen) }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 선택된 보유 재료
+                    if (myIngredients.isNotEmpty()) {
+                        Text("선택된 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column {
+                            myIngredients.chunked(4).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                    rowItems.forEach { ingredient -> InputTagChip(name = ingredient, onDelete = { myIngredients.remove(ingredient) }, primaryColor = primaryGreen) }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // 추천 보유 재료 태그
+                    Text("자주 쓰는 추천 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column {
+                        recommendedIngredients.chunked(4).forEach { rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                rowItems.forEach { ingredient ->
+                                    val isAlreadyAdded = myIngredients.contains(ingredient)
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp), color = if (isAlreadyAdded) Color(0xFFF0F0F0) else Color.White, border = BorderStroke(1.dp, if (isAlreadyAdded) Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
+                                        modifier = Modifier.clickable { if (!isAlreadyAdded) myIngredients.add(ingredient) }
+                                    ) { Text(text = if (isAlreadyAdded) "$ingredient ✓" else "+ $ingredient", fontSize = 13.sp, color = if (isAlreadyAdded) Color.LightGray else Color.DarkGray, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // [영역 2] 항상 띄워주는 기피 음식 및 알레르기 입력칸 (if문 바깥으로 꺼냄)
+            // ==========================================
+            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, thickness = 8.dp) // 시각적 분리를 위한 두꺼운 선
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.Start) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.WarningAmber, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("못 먹는 음식이나 알레르기가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("식단 추천 시 해당 재료는 무조건 제외해 드려요.", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 1. 직접 입력창
+                OutlinedTextField(
+                    value = dislikedInput,
+                    onValueChange = { dislikedInput = it },
+                    placeholder = { Text("제외할 재료 입력 (예: 오이, 땅콩)", color = Color.LightGray, fontSize = 14.sp) },
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            if (dislikedInput.isNotBlank() && !dislikedIngredients.contains(dislikedInput.trim())) {
+                                dislikedIngredients.add(dislikedInput.trim())
+                                dislikedInput = ""
+                            }
+                        }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = Color(0xFFE53935)) }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFFE53935), unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 2. 자주 제외하는 재료 태그
+                Text("자주 제외하는 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Column {
+                    commonDisliked.chunked(4).forEach { rowItems ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                            rowItems.forEach { ingredient ->
+                                val isAlreadyExcluded = dislikedIngredients.contains(ingredient)
+                                val dangerRed = Color(0xFFE53935)
+
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isAlreadyExcluded) Color(0xFFFFEBEE) else Color.White,
+                                    border = BorderStroke(1.dp, if (isAlreadyExcluded) Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
+                                    modifier = Modifier.clickable {
+                                        if (!isAlreadyExcluded) dislikedIngredients.add(ingredient)
+                                    }
+                                ) {
+                                    Text(
+                                        text = if (isAlreadyExcluded) "$ingredient ✓" else "+ $ingredient",
+                                        fontSize = 13.sp,
+                                        color = if (isAlreadyExcluded) dangerRed else Color.DarkGray,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 3. 내가 고른 제외 재료 칩 목록 (입력되거나 태그를 눌렀을 때 나타남)
+                if (dislikedIngredients.isNotEmpty()) {
+                    Text("선택된 제외 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column {
+                        dislikedIngredients.chunked(4).forEach { rowItems ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                                rowItems.forEach { ingredient ->
+                                    InputTagChip(
+                                        name = ingredient,
+                                        onDelete = { dislikedIngredients.remove(ingredient) },
+                                        primaryColor = Color(0xFFE53935) // 빨간색 테마 유지
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }
@@ -638,45 +854,82 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 }
 
 // ==========================================
-// 2단계: 맞춤 식단 기본 설정 (재료/알레르기 입력 포함)
+// 2단계: 에이전트 분석 브리핑 및 선택 (맞춤 칼로리 반영)
+// ==========================================
+// ==========================================
+// 2단계: 에이전트 분석 브리핑 및 선택 (맞춤 칼로리 반영)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep2Screen(hasIngredients: Boolean, userCalories: Int?, onBackClick: () -> Unit, onNextClick: () -> Unit) {
+fun GenerateStep2Screen(
+    dietViewModel: DietViewModel, // ★ 누락되었던 뷰모델 파라미터 추가!
+    hasIngredients: Boolean,
+    ticketCount: Int,
+    userCalories: Int?,
+    onBackClick: () -> Unit,
+    onNextClick: () -> Unit
+) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
+    val ticketCost = 3
 
-    // 식단 기본 설정 상태
+    var isAnalyzing by remember { mutableStateOf(hasIngredients) }
+    var selectedAgent by remember { mutableStateOf<String?>(null) }
+    var familyMemberCount by remember { mutableIntStateOf(3) }
     var mealsPerDay by remember { mutableIntStateOf(3) }
     var includeSnack by remember { mutableStateOf(false) }
-    val selectedStyles = remember { mutableStateListOf("골고루") }
-    var autoDiversify by remember { mutableStateOf(true) }
+    var mealStyle by remember { mutableStateOf("골고루") }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    // 재료 입력 상태
-    var textInput by remember { mutableStateOf("") }
-    val myIngredients = remember { mutableStateListOf<String>() }
-    val recommendedIngredients = listOf("계란", "양파", "대파", "마늘", "두부", "닭가슴살", "돼지고기", "감자")
+    val dummyBriefing = remember {
+        ChefBriefing(
+            ingredientsToAdd = listOf("대파", "양파"),
+            ingredientsToRemove = listOf("설탕", "나트륨"),
+            possibleDishes = listOf("두부계란국", "두부부침", "뚝배기계란찜")
+        )
+    }
 
-    // 기피 음식/알레르기 입력 상태
-    var dislikedInput by remember { mutableStateOf("") }
-    val dislikedIngredients = remember { mutableStateListOf<String>() }
-    val commonDisliked = listOf("오이", "가지", "고수", "버섯", "피망", "견과류", "갑각류", "복숭아", "우유", "밀가루")
-
-    // '재료 있음'일 때는 재료를 1개 이상 입력해야 다음으로 넘어갈 수 있음
-    val isNextEnabled = if (hasIngredients) myIngredients.isNotEmpty() else true
+    LaunchedEffect(hasIngredients) {
+        kotlinx.coroutines.delay(2500)
+        isAnalyzing = false
+    }
 
     Scaffold(
         containerColor = backgroundColor,
-        topBar = { TopAppBar(title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) }, navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } }, actions = { Spacer(modifier = Modifier.width(48.dp)) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
+        topBar = {
+            TopAppBar(
+                title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                actions = { Spacer(modifier = Modifier.width(48.dp)) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        },
         bottomBar = {
-            Button(
-                onClick = onNextClick,
-                enabled = isNextEnabled,
-                colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(20.dp).height(56.dp)
-            ) {
-                Text("다음 단계로", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(isNextEnabled) Color.White else Color.Gray)
+            // ★ 중첩되어 꼬여있던 bottomBar 코드를 깔끔하게 1개로 정리했습니다.
+            if (!isAnalyzing) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    val canAfford = ticketCount >= ticketCost
+                    Button(
+                        onClick = {
+                            if (canAfford) {
+                                // ★ 2단계: 선택된 영양사와 끼니 수를 DB에 영구 저장!
+                                dietViewModel.saveUserProfile(
+                                    agent = selectedAgent ?: "실속관리",
+                                    meals = mealsPerDay
+                                )
+                                onNextClick()
+                            }
+                            else android.widget.Toast.makeText(context, "티켓이 부족합니다...", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = selectedAgent != null,
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                    ) {
+                        if (canAfford) Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                        else Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     ) { innerPadding ->
@@ -685,282 +938,175 @@ fun GenerateStep2Screen(hasIngredients: Boolean, userCalories: Int?, onBackClick
             StepIndicator(currentStep = 2)
             Spacer(modifier = Modifier.height(40.dp))
 
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                if (userCalories != null) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFF4F9F4), border = BorderStroke(1.dp, primaryGreen.copy(alpha=0.3f)), modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("🩺", fontSize = 28.sp)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("영양사 Agent 안내", fontSize = 12.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("입력된 신체 정보 기준 권장 섭취량은\n하루 ${userCalories} kcal 입니다.", fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 20.sp)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("이 칼로리 기준에 맞춰 식단을 짤게요!", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+            if (isAnalyzing) {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = primaryGreen)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text("👨‍🍳 요리사 에이전트가\n맞춤 식단을 분석 중입니다...", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 30.sp)
+                }
+            } else {
+                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    if (userCalories != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF4F9F4),
+                            border = BorderStroke(1.dp, primaryGreen.copy(alpha=0.3f)),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                        ) {
+                            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("🩺", fontSize = 28.sp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("영양사 Agent 브리핑", fontSize = 12.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("입력된 신체 정보 기준 권장 섭취량은\n하루 ${userCalories} kcal 입니다.", fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 20.sp)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("이 칼로리 기준에 맞춰 식단을 짤게요!", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
-                }
 
-                // ==========================================
-                // [영역 1] 재료 있음을 선택했을 때만 나오는 보유 재료 입력칸
-                // ==========================================
-                if (hasIngredients) {
-                    Text("입력하신 재료를 바탕으로\n맞춤 식단을 설정합니다.", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp)
-                    Spacer(modifier = Modifier.height(24.dp))
+                    if (hasIngredients) {
+                        ChefBriefingCard(dummyBriefing, primaryGreen)
+                        Spacer(modifier = Modifier.height(32.dp))
+                        HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, thickness = 8.dp)
+                        Spacer(modifier = Modifier.height(32.dp))
 
-                    Text("어떤 재료가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = textInput, onValueChange = { textInput = it }, placeholder = { Text("재료 직접 입력 (예: 브로콜리)", color = Color.LightGray, fontSize = 14.sp) },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                if (textInput.isNotBlank() && !myIngredients.contains(textInput.trim())) {
-                                    myIngredients.add(textInput.trim())
-                                    textInput = ""
-                                }
-                            }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = primaryGreen) }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(), singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Text("맞춤 식단 기본 설정", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(20.dp))
 
-                    if (myIngredients.isNotEmpty()) {
-                        Text("선택된 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Column {
-                            myIngredients.chunked(4).forEach { rowItems ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                                    rowItems.forEach { ingredient -> InputTagChip(name = ingredient, onDelete = { myIngredients.remove(ingredient) }, primaryColor = primaryGreen) }
-                                }
-                            }
+                        Text("하루에 몇 끼를 드시나요?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "2끼 (점심/저녁)", isSelected = mealsPerDay == 2, onClick = { mealsPerDay = 2 }, primaryColor = primaryGreen)
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "3끼 (아침/점심/저녁)", isSelected = mealsPerDay == 3, onClick = { mealsPerDay = 3 }, primaryColor = primaryGreen)
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                    }
 
-                    Text("자주 쓰는 추천 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column {
-                        recommendedIngredients.chunked(4).forEach { rowItems ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                                rowItems.forEach { ingredient ->
-                                    val isAlreadyAdded = myIngredients.contains(ingredient)
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp), color = if (isAlreadyAdded) Color(0xFFF0F0F0) else Color.White, border = BorderStroke(1.dp, if (isAlreadyAdded) Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
-                                        modifier = Modifier.clickable { if (!isAlreadyAdded) myIngredients.add(ingredient) }
-                                    ) { Text(text = if (isAlreadyAdded) "$ingredient ✓" else "+ $ingredient", fontSize = 13.sp, color = if (isAlreadyAdded) Color.LightGray else Color.DarkGray, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
-                                }
-                            }
+                        Row(modifier = Modifier.fillMaxWidth().clickable { includeSnack = !includeSnack }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = if (includeSnack) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, contentDescription = null, tint = if (includeSnack) primaryGreen else Color.LightGray)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("식단에 가벼운 간식 포함하기", fontSize = 14.sp, color = if (includeSnack) Color.Black else Color.Gray)
                         }
-                    }
-                    Spacer(modifier = Modifier.height(32.dp))
-                    HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(32.dp))
-                } else {
-                    Text("👨‍🍳 보관 중인 재료가 없으시군요!", fontSize = 16.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("다양한 식재료를 활용해\n맞춤 식단을 설정합니다.", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 30.sp)
-                    Spacer(modifier = Modifier.height(32.dp))
-                }
+                        Spacer(modifier = Modifier.height(24.dp))
 
-                // ==========================================
-                // [영역 2] 항상 띄워주는 기피 음식 및 알레르기 입력칸
-                // ==========================================
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.WarningAmber, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("못 먹는 음식이나 알레르기가 있나요?", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("식단 추천 시 해당 재료는 무조건 제외해 드려요.", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = dislikedInput, onValueChange = { dislikedInput = it }, placeholder = { Text("제외할 재료 입력 (예: 오이, 땅콩)", color = Color.LightGray, fontSize = 14.sp) },
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            if (dislikedInput.isNotBlank() && !dislikedIngredients.contains(dislikedInput.trim())) {
-                                dislikedIngredients.add(dislikedInput.trim())
-                                dislikedInput = ""
-                            }
-                        }) { Icon(Icons.Default.AddCircle, contentDescription = "추가", tint = Color(0xFFE53935)) }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFFE53935), unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(), singleLine = true
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text("자주 제외하는 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Column {
-                    commonDisliked.chunked(4).forEach { rowItems ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                            rowItems.forEach { ingredient ->
-                                val isAlreadyExcluded = dislikedIngredients.contains(ingredient)
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp), color = if (isAlreadyExcluded) Color(0xFFFFEBEE) else Color.White, border = BorderStroke(1.dp, if (isAlreadyExcluded) Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
-                                    modifier = Modifier.clickable { if (!isAlreadyExcluded) dislikedIngredients.add(ingredient) }
-                                ) { Text(text = if (isAlreadyExcluded) "$ingredient ✓" else "+ $ingredient", fontSize = 13.sp, color = if (isAlreadyExcluded) Color(0xFFE53935) else Color.DarkGray, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
-                            }
+                        Text("식단 구성 스타일", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "밥+국 필수", isSelected = mealStyle == "밥+국 필수", onClick = { mealStyle = "밥+국 필수" }, primaryColor = primaryGreen)
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "일품/간편식", isSelected = mealStyle == "일품/간편식", onClick = { mealStyle = "일품/간편식" }, primaryColor = primaryGreen)
+                            SelectableOptionChip(modifier = Modifier.weight(1f), text = "골고루 섞어서", isSelected = mealStyle == "골고루", onClick = { mealStyle = "골고루" }, primaryColor = primaryGreen)
                         }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
 
-                if (dislikedIngredients.isNotEmpty()) {
-                    Text("선택된 제외 재료", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column {
-                        dislikedIngredients.chunked(4).forEach { rowItems ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                                rowItems.forEach { ingredient -> InputTagChip(name = ingredient, onDelete = { dislikedIngredients.remove(ingredient) }, primaryColor = Color(0xFFE53935)) }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-                HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, thickness = 8.dp)
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // ==========================================
-                // [영역 3] 식단 기본 설정
-                // ==========================================
-                Text("맞춤 식단 기본 설정", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Text("하루에 몇 끼를 드시나요?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "2끼", isSelected = mealsPerDay == 2, onClick = { mealsPerDay = 2 }, primaryColor = primaryGreen)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "3끼", isSelected = mealsPerDay == 3, onClick = { mealsPerDay = 3 }, primaryColor = primaryGreen)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(modifier = Modifier.fillMaxWidth().clickable { includeSnack = !includeSnack }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = if (includeSnack) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, contentDescription = null, tint = if (includeSnack) primaryGreen else Color.LightGray)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("식단에 가벼운 간식 포함하기", fontSize = 14.sp, color = if (includeSnack) Color.Black else Color.Gray)
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text("식단 구성 스타일 (중복 선택 가능)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val toggleStyle = { style: String ->
-                    if (style == "골고루") {
-                        selectedStyles.clear()
-                        selectedStyles.add("골고루")
+                        Spacer(modifier = Modifier.height(32.dp))
+                        HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Text("이 후보들로 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     } else {
-                        selectedStyles.remove("골고루")
-                        if (selectedStyles.contains(style)) {
-                            selectedStyles.remove(style)
-                            if (selectedStyles.isEmpty()) {
-                                selectedStyles.add("골고루")
+                        Text("👨‍🍳 보관 중인 재료가 없으시군요!", fontSize = 16.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("다양한 식재료를 활용해 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(40.dp))
+                    Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
+                    androidx.compose.animation.AnimatedVisibility(visible = selectedAgent == "패밀리케어") {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp)).border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp)).padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("👨‍👩‍👧‍👦 식사 인원을 알려주세요", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("인원에 맞춰 양과 레시피를 조절할게요", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                        } else {
-                            selectedStyles.add(style)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { if (familyMemberCount > 1) familyMemberCount-- }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, CircleShape)) {
+                                    Icon(Icons.Default.Remove, contentDescription = "빼기", tint = if (familyMemberCount > 1) Color.Black else Color.LightGray)
+                                }
+                                Text("$familyMemberCount 명", modifier = Modifier.padding(horizontal = 24.dp), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
+                                IconButton(onClick = { if (familyMemberCount < 10) familyMemberCount++ }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, CircleShape)) { Icon(Icons.Default.Add, contentDescription = "더하기") }
+                            }
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
+                    Spacer(modifier = Modifier.height(40.dp))
                 }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "밥 필수",
-                        isSelected = selectedStyles.contains("밥 필수"),
-                        onClick = { toggleStyle("밥 필수") },
-                        primaryColor = primaryGreen
-                    )
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "국 필수",
-                        isSelected = selectedStyles.contains("국 필수"),
-                        onClick = { toggleStyle("국 필수") },
-                        primaryColor = primaryGreen
-                    )
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "일품/간편식",
-                        isSelected = selectedStyles.contains("일품/간편식"),
-                        onClick = { toggleStyle("일품/간편식") },
-                        primaryColor = primaryGreen
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "양식",
-                        isSelected = selectedStyles.contains("양식"),
-                        onClick = { toggleStyle("양식") },
-                        primaryColor = primaryGreen
-                    )
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "일식",
-                        isSelected = selectedStyles.contains("일식"),
-                        onClick = { toggleStyle("일식") },
-                        primaryColor = primaryGreen
-                    )
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "중식",
-                        isSelected = selectedStyles.contains("중식"),
-                        onClick = { toggleStyle("중식") },
-                        primaryColor = primaryGreen
-                    )
-                    SelectableOptionChip(
-                        modifier = Modifier.weight(1f),
-                        text = "골고루",
-                        isSelected = selectedStyles.contains("골고루"),
-                        onClick = { toggleStyle("골고루") },
-                        primaryColor = primaryGreen
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text("1주일 식단 다양성 설정", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "매일 다른 스타일로 구성 (권장)",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Black
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "선택한 밥/국/양식/일식/중식 등의 스타일을 요일별로 순환 배치하여 질리지 않도록 합니다.",
-                            fontSize = 12.sp,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 16.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Switch(
-                        checked = autoDiversify,
-                        onCheckedChange = { autoDiversify = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = primaryGreen,
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color.LightGray
-                        )
-                    )
-                }
-                Spacer(modifier = Modifier.height(40.dp))
             }
         }
+    }
+}
+
+// ==========================================
+// ★ 새로 추가할 데이터 클래스 및 UI 컴포넌트
+// ==========================================
+data class ChefBriefing(
+    val ingredientsToAdd: List<String>,
+    val ingredientsToRemove: List<String>,
+    val possibleDishes: List<String>
+)
+
+@Composable
+fun ChefBriefingCard(briefing: ChefBriefing, primaryColor: Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBF9)),
+        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("👨‍🍳", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("요리사 Agent 분석 결과", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = primaryColor)
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 추가/제외 재료 칩
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                briefing.ingredientsToAdd.forEach { ingredient ->
+                    HintChip(text = "+ $ingredient", bgColor = Color(0xFFE8F5E9), textColor = primaryColor)
+                }
+                briefing.ingredientsToRemove.forEach { ingredient ->
+                    HintChip(text = "- $ingredient", bgColor = Color(0xFFFFEBEE), textColor = Color(0xFFD32F2F))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 추천 요리 리스트
+            Text("추천 요리 후보군", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = briefing.possibleDishes.joinToString(", "),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 24.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun HintChip(text: String, bgColor: Color, textColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor,
+        modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -994,77 +1140,225 @@ fun AgentCard(title: String, description: String, targetIcon: androidx.compose.u
 }
 
 // ==========================================
-// 3단계: 영양사 에이전트 선택 (여기서 티켓 결제)
+// 3단계: 식단 확인 (재생성 팝업 및 과금 로직 추가)
 // ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun GenerateStep3Screen(ticketCount: Int, onBackClick: () -> Unit, onNextClick: () -> Unit) {
+fun GenerateStep3Screen(
+    ticketCount: Int,
+    onDeductTicket: (Int) -> Unit,
+    onBackClick: () -> Unit,
+    onSaveClick: (List<com.example.menu_recipe_app.db.MealEntity>) -> Unit,
+    onChangeAgentClick: () -> Unit
+) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
-    val ticketCost = 3
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    var selectedAgent by remember { mutableStateOf<String?>(null) }
-    var familyMemberCount by remember { mutableIntStateOf(3) }
+    val savedDaysState = remember { mutableStateListOf(*Array(7) { true }) }
+    val days = remember {
+        val baseDays = listOf("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
+        val todayIndex = java.time.LocalDate.now().dayOfWeek.value - 1
+        baseDays.subList(todayIndex, 7) + baseDays.subList(0, todayIndex)
+    }
+
+    // ★ 재생성 관련 상태 변수들
+    var regenCount by remember { mutableIntStateOf(0) }
+    var showRegenDialog by remember { mutableStateOf(false) }
+    var additionalRequest by remember { mutableStateOf("") }
+    var isRegenerating by remember { mutableStateOf(false) }
+
+    // ★ 요금 계산 로직 (0, 0, 1, 2, 3...)
+    val currentRegenCost = if (regenCount < 2) 0 else regenCount - 1
+    val remainingFreeCount = if (regenCount < 2) 2 - regenCount else 0
+
+    // 재생성 로딩 애니메이션 (2초 후 완료)
+    LaunchedEffect(isRegenerating) {
+        if (isRegenerating) {
+            kotlinx.coroutines.delay(2000)
+            isRegenerating = false
+        }
+    }
 
     Scaffold(
         containerColor = backgroundColor,
-        topBar = { TopAppBar(title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) }, navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } }, actions = { Spacer(modifier = Modifier.width(48.dp)) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
+        topBar = {
+            TopAppBar(
+                title = { Text("생성된 식단 확인", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
+                actions = { Spacer(modifier = Modifier.width(48.dp)) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+            )
+        },
         bottomBar = {
-            Column(modifier = Modifier.padding(20.dp)) {
-                val canAfford = ticketCount >= ticketCost
-                Button(
-                    onClick = {
-                        if (canAfford) onNextClick()
-                        else android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    enabled = selectedAgent != null,
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
-                    if (canAfford) Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
-                    else Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!isRegenerating) {
+                Column(modifier = Modifier.background(backgroundColor).padding(horizontal = 20.dp).padding(bottom = 24.dp, top = 8.dp)) {
+                    Button(
+                        onClick = {
+                            val mealsToSave =
+                                mutableListOf<com.example.menu_recipe_app.db.MealEntity>()
+                            val today = java.time.LocalDate.now()
+                            for (i in 0 until 7) {
+                                if (savedDaysState[i]) { // 체크된 요일만 저장!
+                                    val targetDate = today.plusDays(i.toLong())
+                                    mealsToSave.add(
+                                        com.example.menu_recipe_app.db.MealEntity(
+                                            date = targetDate.toString(),
+                                            mealType = "아침",
+                                            menuName = "AI 추천 오트밀 샐러드",
+                                            calories = 350
+                                        )
+                                    )
+                                    // ... 점심, 저녁 추가
+                                }
+                            }
+                            onSaveClick(mealsToSave)
+                        },
+                        enabled = savedDaysState.any { it },
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                    ) {
+                        Icon(Icons.Default.BookmarkBorder, contentDescription = null, tint = if (savedDaysState.any { it }) Color.White else Color.Gray)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        val selectedCount = savedDaysState.count { it }
+                        Text(
+                            text = if (selectedCount == 7) "이 식단으로 저장" else "${selectedCount}개 요일 식단만 저장",
+                            fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (savedDaysState.any { it }) Color.White else Color.Gray
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // ★ 다시 생성하기 버튼 (비용을 버튼에 띄워줍니다)
+                        OutlinedButton(
+                            onClick = { showRegenDialog = true },
+                            border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier.weight(1f).height(50.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            val btnText = if (remainingFreeCount > 0) "다시 생성 (무료 ${remainingFreeCount}번)" else "다시 생성 (🎫 $currentRegenCost)"
+                            Text(btnText, fontSize = 13.sp)
+                        }
+                        OutlinedButton(onClick = onChangeAgentClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.weight(1f).height(50.dp)) {
+                            Icon(Icons.Default.PersonOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("다른 영양사 선택", fontSize = 13.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("선택하여 체크된 요일만 내 식단표 및 DB에 기록됩니다.", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 3) // ★ Step 3
-            Spacer(modifier = Modifier.height(40.dp))
+            StepIndicator(currentStep = 3)
+            Spacer(modifier = Modifier.height(24.dp))
 
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                Text("어떤 영양사에게 식단을 맡길까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+            if (isRegenerating) {
+                // ★ 재생성 로딩 뷰
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = primaryGreen)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text("요청사항을 반영하여\n식단을 다시 짜고 있습니다...", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 30.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("조금만 기다려주세요!", fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                // 기존 캘린더 및 식단 뷰
+                AgentSummaryCard(primaryGreen)
                 Spacer(modifier = Modifier.height(32.dp))
-
-                AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("이번 주 식단표", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
-                AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
+                val pagerState = rememberPagerState(pageCount = { 7 })
+                HorizontalPager(state = pagerState, contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 16.dp) { page ->
+                    val displayDayName = if (page == 0) "${days[page]} (오늘)" else days[page]
+                    DailyDietCard(
+                        dayName = displayDayName,
+                        isCurrentPage = pagerState.currentPage == page,
+                        primaryColor = primaryGreen,
+                        isSavedChecked = savedDaysState[page],
+                        onCheckedChange = { isChecked -> savedDaysState[page] = isChecked }
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    repeat(7) { iteration ->
+                        val color = if (pagerState.currentPage == iteration) primaryGreen else Color(0xFFE0E0E0)
+                        Box(modifier = Modifier.padding(4.dp).size(8.dp).clip(CircleShape).background(color))
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
 
-                androidx.compose.animation.AnimatedVisibility(visible = selectedAgent == "패밀리케어") {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp)).border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp)).padding(16.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("👨‍👩‍👧‍👦 식사 인원을 알려주세요", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("인원에 맞춰 양과 레시피를 조절할게요", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { if (familyMemberCount > 1) familyMemberCount-- }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, CircleShape)) {
-                                Icon(Icons.Default.Remove, contentDescription = "빼기", tint = if (familyMemberCount > 1) Color.Black else Color.LightGray)
+    // ==========================================
+    // ★ 추가 요청사항 다이얼로그 (팝업창)
+    // ==========================================
+    if (showRegenDialog) {
+        AlertDialog(
+            onDismissRequest = { showRegenDialog = false },
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+            title = { Text("식단 다시 생성하기", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = {
+                Column {
+                    Text("마음에 들지 않는 부분이 있다면 알려주세요!\nAI 에이전트가 적극 반영하여 다시 짜드립니다.", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 18.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = additionalRequest,
+                        onValueChange = { additionalRequest = it },
+                        placeholder = { Text("예: 점심에는 면 요리를 넣어줘, 매운 건 빼줘", fontSize = 13.sp, color = Color.LightGray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant),
+                        shape = RoundedCornerShape(12.dp),
+                        minLines = 3
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Surface(color = Color(0xFFF9F9F9), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = if (currentRegenCost == 0) primaryGreen else Color(0xFFE53935), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            if (currentRegenCost == 0) {
+                                Text("현재 무료 재생성 기회가 ${remainingFreeCount}번 남았습니다.", color = primaryGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("이번 재생성에는 🎫 티켓 ${currentRegenCost}개가 소모됩니다.", color = Color(0xFFE53935), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
-                            Text("$familyMemberCount 명", modifier = Modifier.padding(horizontal = 24.dp), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
-                            IconButton(onClick = { if (familyMemberCount < 10) familyMemberCount++ }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, CircleShape)) { Icon(Icons.Default.Add, contentDescription = "더하기") }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
-                Spacer(modifier = Modifier.height(40.dp))
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (ticketCount >= currentRegenCost) {
+                            onDeductTicket(currentRegenCost)
+                            regenCount++
+                            showRegenDialog = false
+                            additionalRequest = ""
+                            isRegenerating = true // 로딩 화면 트리거
+                        } else {
+                            android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen)
+                ) {
+                    Text("생성하기", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegenDialog = false }) { Text("취소", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-        }
+        )
     }
 }
 
@@ -1176,36 +1470,13 @@ fun MealRow(mealType: String, primaryColor: Color, menu: String) {
 }
 
 // ==========================================
-// 4단계: 식단 확인 (기존 3단계)
+// 4단계: 완료
 // ==========================================
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep4Screen(ticketCount: Int, onDeductTicket: (Int) -> Unit, onBackClick: () -> Unit, onSaveClick: () -> Unit, onChangeAgentClick: () -> Unit) {
+fun GenerateStep4Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEditClick: () -> Unit) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    val savedDaysState = remember { mutableStateListOf(*Array(7) { true }) }
-    val days = remember {
-        val baseDays = listOf("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
-        val todayIndex = java.time.LocalDate.now().dayOfWeek.value - 1
-        baseDays.subList(todayIndex, 7) + baseDays.subList(0, todayIndex)
-    }
-
-    var regenCount by remember { mutableIntStateOf(0) }
-    var showRegenDialog by remember { mutableStateOf(false) }
-    var additionalRequest by remember { mutableStateOf("") }
-    var isRegenerating by remember { mutableStateOf(false) }
-
-    val currentRegenCost = if (regenCount < 2) 0 else regenCount - 1
-    val remainingFreeCount = if (regenCount < 2) 2 - regenCount else 0
-
-    LaunchedEffect(isRegenerating) {
-        if (isRegenerating) {
-            kotlinx.coroutines.delay(2000)
-            isRegenerating = false
-        }
-    }
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1218,131 +1489,50 @@ fun GenerateStep4Screen(ticketCount: Int, onDeductTicket: (Int) -> Unit, onBackC
             )
         },
         bottomBar = {
-            if (!isRegenerating) {
-                Column(modifier = Modifier.background(backgroundColor).padding(horizontal = 20.dp).padding(bottom = 24.dp, top = 8.dp)) {
-                    Button(
-                        onClick = onSaveClick,
-                        enabled = savedDaysState.any { it },
-                        colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(56.dp)
-                    ) {
-                        Icon(Icons.Default.BookmarkBorder, contentDescription = null, tint = if (savedDaysState.any { it }) Color.White else Color.Gray)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        val selectedCount = savedDaysState.count { it }
-                        Text(text = if (selectedCount == 7) "이 식단으로 저장" else "${selectedCount}개 요일 식단만 저장", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (savedDaysState.any { it }) Color.White else Color.Gray)
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(
-                            onClick = { showRegenDialog = true },
-                            border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface),
-                            modifier = Modifier.weight(1f).height(50.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            val btnText = if (remainingFreeCount > 0) "다시 생성 (무료 ${remainingFreeCount}번)" else "다시 생성 (🎫 $currentRegenCost)"
-                            Text(btnText, fontSize = 13.sp)
-                        }
-                        OutlinedButton(onClick = onChangeAgentClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.weight(1f).height(50.dp)) {
-                            Icon(Icons.Default.PersonOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("다른 영양사 선택", fontSize = 13.sp)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("선택하여 체크된 요일만 내 식단표 및 DB에 기록됩니다.", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 8.dp)) {
+                Button(onClick = onGoMainClick, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Icon(Icons.Default.Home, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("메인으로 가기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(onClick = onEditClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("식단 수정하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 4) // ★ Step 4
-            Spacer(modifier = Modifier.height(24.dp))
-
-            if (isRegenerating) {
-                Column(modifier = Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = primaryGreen)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text("요청사항을 반영하여\n식단을 다시 짜고 있습니다...", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, lineHeight = 30.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("조금만 기다려주세요!", fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+            StepIndicator(currentStep = 4)
+            Spacer(modifier = Modifier.height(48.dp))
+            Box(contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(140.dp).clip(CircleShape).background(Color(0xFFF1F8F1)))
+                Box(modifier = Modifier.size(110.dp).clip(CircleShape).background(Color(0xFFE3F2E3)))
+                Box(modifier = Modifier.size(80.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Check, contentDescription = "완료", tint = primaryGreen, modifier = Modifier.size(48.dp))
                 }
-            } else {
-                AgentSummaryCard(primaryGreen)
-                Spacer(modifier = Modifier.height(32.dp))
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("이번 주 식단표", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                val pagerState = rememberPagerState(pageCount = { 7 })
-                HorizontalPager(state = pagerState, contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 16.dp) { page ->
-                    val displayDayName = if (page == 0) "${days[page]} (오늘)" else days[page]
-                    DailyDietCard(
-                        dayName = displayDayName, isCurrentPage = pagerState.currentPage == page, primaryColor = primaryGreen,
-                        isSavedChecked = savedDaysState[page], onCheckedChange = { isChecked -> savedDaysState[page] = isChecked }
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    repeat(7) { iteration ->
-                        val color = if (pagerState.currentPage == iteration) primaryGreen else Color(0xFFE0E0E0)
-                        Box(modifier = Modifier.padding(4.dp).size(8.dp).clip(CircleShape).background(color))
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
             }
+            Spacer(modifier = Modifier.height(32.dp))
+            Text(
+                text = buildAnnotatedString {
+                    append("식단표 ")
+                    withStyle(style = SpanStyle(color = primaryGreen)) { append("저장 완료") }
+                },
+                fontSize = 28.sp, fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("이번주 식단이 내 식단표에 반영되었어요", fontSize = 15.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(40.dp))
+            AgentFinalSummaryCard(primaryGreen)
+            Spacer(modifier = Modifier.height(40.dp))
+            Text("꾸준한 실천이 건강한 변화를 만듭니다.", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("다음주에도 균형 잡힌 식단으로 함께해요!", fontSize = 13.sp, color = primaryGreen, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(24.dp))
         }
-    }
-
-    if (showRegenDialog) {
-        AlertDialog(
-            onDismissRequest = { showRegenDialog = false },
-            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-            title = { Text("식단 다시 생성하기", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-            text = {
-                Column {
-                    Text("마음에 들지 않는 부분이 있다면 알려주세요!\nAI 에이전트가 적극 반영하여 다시 짜드립니다.", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 18.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = additionalRequest, onValueChange = { additionalRequest = it }, placeholder = { Text("예: 점심에는 면 요리를 넣어줘, 매운 건 빼줘", fontSize = 13.sp, color = Color.LightGray) },
-                        modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryGreen, unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), minLines = 3
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Surface(color = Color(0xFFF9F9F9), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = if (currentRegenCost == 0) primaryGreen else Color(0xFFE53935), modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            if (currentRegenCost == 0) {
-                                Text("현재 무료 재생성 기회가 ${remainingFreeCount}번 남았습니다.", color = primaryGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("이번 재생성에는 🎫 티켓 ${currentRegenCost}개가 소모됩니다.", color = Color(0xFFE53935), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (ticketCount >= currentRegenCost) {
-                        onDeductTicket(currentRegenCost)
-                        regenCount++
-                        showRegenDialog = false
-                        additionalRequest = ""
-                        isRegenerating = true
-                    } else {
-                        android.widget.Toast.makeText(context, "티켓이 부족합니다.", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                }, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen)) { Text("생성하기", fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = { TextButton(onClick = { showRegenDialog = false }) { Text("취소", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant) } }
-        )
     }
 }
 
@@ -1381,60 +1571,6 @@ fun AgentFinalSummaryCard(primaryColor: Color) {
     }
 }
 
-// ==========================================
-// 5단계: 완료 (기존 4단계)
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GenerateStep5Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEditClick: () -> Unit) {
-    val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-    val primaryGreen = Color(0xFF5A8754)
-
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(title = { Text("생성된 식단 확인", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) }, navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } }, actions = { Spacer(modifier = Modifier.width(48.dp)) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor))
-        },
-        bottomBar = {
-            Column(modifier = Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 8.dp)) {
-                Button(onClick = onGoMainClick, colors = ButtonDefaults.buttonColors(containerColor = primaryGreen), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Icon(Icons.Default.Home, contentDescription = null, tint = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("메인으로 가기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(onClick = onEditClick, border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface, contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("식단 수정하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-            Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 5) // ★ Step 5
-            Spacer(modifier = Modifier.height(48.dp))
-            Box(contentAlignment = Alignment.Center) {
-                Box(modifier = Modifier.size(140.dp).clip(CircleShape).background(Color(0xFFF1F8F1)))
-                Box(modifier = Modifier.size(110.dp).clip(CircleShape).background(Color(0xFFE3F2E3)))
-                Box(modifier = Modifier.size(80.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.Check, contentDescription = "완료", tint = primaryGreen, modifier = Modifier.size(48.dp)) }
-            }
-            Spacer(modifier = Modifier.height(32.dp))
-            Text(text = buildAnnotatedString { append("식단표 "); withStyle(style = SpanStyle(color = primaryGreen)) { append("저장 완료") } }, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("이번주 식단이 내 식단표에 반영되었어요", fontSize = 15.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
-            Spacer(modifier = Modifier.height(40.dp))
-            AgentFinalSummaryCard(primaryGreen)
-            Spacer(modifier = Modifier.height(40.dp))
-            Text("꾸준한 실천이 건강한 변화를 만듭니다.", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text("다음주에도 균형 잡힌 식단으로 함께해요!", fontSize = 13.sp, color = primaryGreen, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
-}
-
 // ★ 코드 관리를 위해 레시피 데이터 구조를 상단에 정의합니다.
 data class SimpleRecipe(
     val name: String,
@@ -1442,38 +1578,26 @@ data class SimpleRecipe(
 )
 
 // ==========================================
-// ★ 수정된 화면: 레시피 메인 탭 (DB 연동 완료)
-// ==========================================
-// ==========================================
-// ★ 완벽하게 중괄호 짝을 맞춘 RecipeScreen 완성본
+// ★ 새로운 화면: 레시피 메인 탭 (사진 추가 버전)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: (Int) -> Unit) {
+fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: (String) -> Unit) { // ★ (String) -> Unit 으로 수정
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-    val context = androidx.compose.ui.platform.LocalContext.current
 
-    var recipeList by remember { mutableStateOf<List<com.example.menu_recipe_app.db.RecipeEntity>>(emptyList()) }
-    // 한글 입력 최적화를 위해 TextFieldValue 상태 사용
-    var searchQuery by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
-
-    LaunchedEffect(Unit) {
-        val db = com.example.menu_recipe_app.db.AppDatabase.getDatabase(context)
-        recipeList = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            db.recipeDao().getAllRecipes()
-        }
-    }
-
-    // 입력된 검색어에 따라 실시간으로 필터링된 레시피 목록 계산
-    val filteredRecipes = remember(searchQuery.text, recipeList) {
-        if (searchQuery.text.isBlank()) {
-            recipeList
-        } else {
-            recipeList.filter { recipe ->
-                recipe.menuName.contains(searchQuery.text, ignoreCase = true) ||
-                recipe.ingredients.contains(searchQuery.text, ignoreCase = true)
-            }
-        }
+    // ★ 텍스트 리스트에서 이미지 URL을 포함한 객체 리스트로 업그레이드
+    val recipeList = remember {
+        listOf(
+            SimpleRecipe("된장찌개", "https://loremflickr.com/300/300/korean,stew"),
+            SimpleRecipe("김치볶음밥", "https://loremflickr.com/300/300/friedrice"),
+            SimpleRecipe("계란말이", "https://loremflickr.com/300/300/omelet"),
+            SimpleRecipe("제육볶음", "https://loremflickr.com/300/300/spicypork"),
+            SimpleRecipe("시금치무침", "https://loremflickr.com/300/300/spinach"),
+            SimpleRecipe("두부조림", "https://loremflickr.com/300/300/tofu"),
+            SimpleRecipe("오징어볶음", "https://loremflickr.com/300/300/squid"),
+            SimpleRecipe("감자채볶음", "https://loremflickr.com/300/300/potato"),
+            SimpleRecipe("소고기무국", "https://loremflickr.com/300/300/soup")
+        )
     }
 
     Scaffold(
@@ -1487,111 +1611,53 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
         bottomBar = { BottomNavigationBar(navController, "recipe") }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-
-            // 검색창 영역: 별도의 화면으로 이동하지 않고 실시간 필터링
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            "어떤 요리를 만들어볼까요?",
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = "검색",
-                            tint = Color.Gray
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.text.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = androidx.compose.ui.text.input.TextFieldValue("") }) {
-                                Icon(
-                                    Icons.Default.Clear,
-                                    contentDescription = "검색어 지우기",
-                                    tint = Color.Gray
-                                )
-                            }
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = Color(0xFF5A8754),
-                        unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            }
-
+            OutlinedTextField(
+                value = "",
+                onValueChange = {},
+                placeholder = { Text("어떤 요리를 만들어볼까요?", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = "검색",
+                        tint = Color.Gray
+                    )
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+            )
             Spacer(modifier = Modifier.height(16.dp))
-
-            if (recipeList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("아직 등록된 레시피가 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else if (filteredRecipes.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("'${searchQuery.text}'에 대한 검색 결과가 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filteredRecipes.size) { index ->
-                        val recipe = filteredRecipes[index]
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.clickable { onNavigateToDetail(recipe.id) }
-                        ) {
-                            if (recipe.imageUrl.isNullOrBlank()) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(90.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFF0F0F0)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.RestaurantMenu,
-                                        contentDescription = null,
-                                        tint = Color.LightGray
-                                    )
-                                }
-                            } else {
-                                AsyncImage(
-                                    model = recipe.imageUrl,
-                                    contentDescription = recipe.menuName,
-                                    modifier = Modifier
-                                        .size(90.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFF0F0F0)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = recipe.menuName,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(recipeList.size) { index ->
+                    val recipe = recipeList[index]
+                    // ★ 클릭 시 recipe.name을 파라미터로 넘겨줍니다!
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { onNavigateToDetail(recipe.name) }) {
+                        AsyncImage(
+                            model = recipe.imageUrl,
+                            contentDescription = recipe.name,
+                            modifier = Modifier.size(90.dp).clip(CircleShape)
+                                .background(Color(0xFFF0F0F0)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            recipe.name,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
@@ -1600,24 +1666,21 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
 }
 
 // ==========================================
-// ★ 수정된 화면: 레시피 상세 화면 (DB 연동 완료)
+// ★ 새로운 화면: 레시피 상세 화면
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecipeDetailScreen(recipeId: Int, onBackClick: () -> Unit) {
+fun RecipeDetailScreen(menuName: String, viewModel: DietViewModel, onBackClick: () -> Unit) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
-    val context = androidx.compose.ui.platform.LocalContext.current
 
-    // ★ DB에서 넘겨받은 ID로 찾은 단일 레시피 정보 상태
-    var recipe by remember { mutableStateOf<com.example.menu_recipe_app.db.RecipeEntity?>(null) }
-
-    LaunchedEffect(recipeId) {
-        val db = com.example.menu_recipe_app.db.AppDatabase.getDatabase(context)
-        recipe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            db.recipeDao().getRecipeById(recipeId)
-        }
+    // ★ 화면이 열릴 때 뷰모델에게 레시피 정보를 찾아오라고 명령
+    LaunchedEffect(menuName) {
+        viewModel.fetchRecipeByName(menuName)
     }
+
+    // ★ DB에서 찾은 레시피 데이터를 관찰
+    val recipe by viewModel.selectedRecipe.collectAsState()
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1630,72 +1693,73 @@ fun RecipeDetailScreen(recipeId: Int, onBackClick: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        if (recipe == null) {
-            // 데이터를 불러오는 동안 보여줄 로딩 뷰
-            Box(modifier = Modifier.padding(innerPadding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = primaryGreen)
-            }
-        } else {
-            // 데이터 불러오기 완료!
-            Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
-                if (recipe!!.imageUrl.isNullOrBlank()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
-                    }
-                } else {
-                    AsyncImage(
-                        model = recipe!!.imageUrl,
-                        contentDescription = recipe!!.menuName,
-                        modifier = Modifier.fillMaxWidth().height(250.dp),
-                        contentScale = ContentScale.Crop
-                    )
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
+
+            // 데이터 로딩 중이거나 없을 때
+            if (recipe == null) {
+                Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = primaryGreen)
                 }
+            } else {
+                // 1. 진짜 사진 뿌려주기
+                AsyncImage(
+                    model = recipe!!.imageUrl,
+                    contentDescription = recipe!!.menuName,
+                    modifier = Modifier.fillMaxWidth().height(250.dp),
+                    contentScale = ContentScale.Crop
+                )
 
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text(recipe!!.menuName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    // 2. 진짜 이름 뿌려주기
+                    Text(text = recipe!!.menuName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // 1. 인분 정보가 있을 때만 표시 (나중에 크롤링 데이터가 들어오면 여기로 쏙 들어갑니다!)
-                        if (!recipe!!.servings.isNullOrBlank()) {
-                            Icon(Icons.Default.People, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(recipe!!.servings!!, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(16.dp))
-                        }
-
-                        // 2. 칼로리 정보가 있을 때만 표시
-                        if (!recipe!!.calories.isNullOrBlank() && recipe!!.calories != "0") {
-                            Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("${recipe!!.calories} kcal", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                        }
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("20분", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("350 kcal", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp) // 시간/칼로리는 추후 확장 가능
                     }
-
                     Spacer(modifier = Modifier.height(32.dp))
+
+                    // 3. 진짜 재료 파싱해서 뿌려주기
                     Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
-
                     Card(colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            // ★ DB에 통짜 텍스트로 저장된 재료들을 쉼표(,) 기준으로 분리해서 깔끔하게 표시
-                            val ingredientList = recipe!!.ingredients.split(",").map { it.trim() }
-                            ingredientList.forEachIndexed { index, ingredient ->
-                                RecipeIngredientRow(ingredient, "") // 용량 데이터 분리 전이므로 공란 처리
-                                if (index < ingredientList.size - 1) {
+                            // "차돌박이 150g, 두부 반 모" -> 쉼표로 분리
+                            val ingredientsList = recipe!!.ingredients.split(",")
+                            ingredientsList.forEachIndexed { index, item ->
+                                val parts = item.trim().split(" ") // "차돌박이"와 "150g" 분리
+                                val name = if (parts.size > 1) parts.dropLast(1).joinToString(" ") else item.trim()
+                                val amount = if (parts.size > 1) parts.last() else ""
+
+                                RecipeIngredientRow(name, amount)
+
+                                if (index < ingredientsList.size - 1) {
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
                                 }
                             }
                         }
                     }
-
                     Spacer(modifier = Modifier.height(32.dp))
+
+                    // 4. 진짜 조리 순서 파싱해서 뿌려주기
                     Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // ★ 통짜로 저장된 조리 순서 텍스트를 그대로 출력
-                    Text(recipe!!.instructions, fontSize = 15.sp, lineHeight = 24.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
-
+                    // "\n" 단위로 분리해서 줄마다 표시
+                    val stepsList = recipe!!.instructions.split("\n")
+                    stepsList.forEachIndexed { index, step ->
+                        // "1. 냄비에..." 처럼 앞에 붙은 숫자와 점을 지워줌 (UI에서 예쁘게 숫자 박스를 그려주니까)
+                        val cleanStep = step.replace(Regex("^[0-9]+\\.\\s*"), "").trim()
+                        if (cleanStep.isNotBlank()) {
+                            RecipeStepRow((index + 1).toString(), cleanStep, primaryGreen)
+                        }
+                    }
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
@@ -1744,59 +1808,67 @@ fun SelectableOptionChip(
         )
     }
 }
-// ==========================================
+    // ==========================================
 // ★ 새로운 화면: 상세 캘린더 탭
 // ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun CalendarScreen(navController: androidx.navigation.NavController) {
-    val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-    val primaryGreen = Color(0xFF5A8754)
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun CalendarScreen(
+        navController: androidx.navigation.NavController,
+        dietViewModel: DietViewModel // ★ 에러 원인 1 해결: 파라미터 추가!
+    ) {
+        val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
+        val primaryGreen = Color(0xFF5A8754)
 
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { Text("식단 캘린더", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
-            )
-        },
-        bottomBar = { BottomNavigationBar(navController, "calendar") }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp)
-        ) {
-            // ★ 에러 해결: 상세 캘린더 화면 안에서는 '더보기'를 눌러도 아무 일도 안 일어나게 빈 괄호 {} 를 넘깁니다.
-            CalendarCard(onNavigateToCalendar = {})
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 임시로 보여줄 빈 상태(Empty State) UI
-            Card(
-                modifier = Modifier.fillMaxWidth().height(150.dp),
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
+        Scaffold(
+            containerColor = backgroundColor,
+            topBar = {
+                TopAppBar(
+                    title = { Text("식단 캘린더", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
+                )
+            },
+            bottomBar = { BottomNavigationBar(navController, "calendar") }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp)
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                var tempDate by remember { mutableStateOf(LocalDate.now()) }
+
+                CalendarCard(
+                    selectedDate = tempDate,
+                    onDateSelected = { tempDate = it },
+                    onNavigateToCalendar = {},
+                    dietViewModel = dietViewModel // ★ 여기서 넘겨줌
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(150.dp),
+                    colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("해당 날짜에 등록된 식단이 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("해당 날짜에 등록된 식단이 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                    }
                 }
             }
         }
     }
-}
 @Composable
 fun TicketShopSheetContent(primaryColor: Color, onBuySuccess: (Int) -> Unit) {
     Column(
@@ -1992,14 +2064,15 @@ fun MyPageScreen(
 }
 
 // ★ 신체 정보 입력 및 칼로리 계산 컴포넌트 (식단 목표 및 맞춤 칼로리 로직 추가)
+
+
 @Composable
 fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int) -> Unit) {
     var gender by remember { mutableStateOf("남성") }
     var age by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 보통(가벼운 활동)
-    var goal by remember { mutableStateOf("체중 유지") } // ★ 식단 목표 상태 추가
+    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 가벼운 활동
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2043,17 +2116,6 @@ fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int
                     SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "보통 (주 1~3회 가벼운 운동)", isSelected = activityLevel == 1.375, onClick = { activityLevel = 1.375 }, primaryColor = primaryColor)
                     SelectableOptionChip(modifier = Modifier.fillMaxWidth(), text = "활동적 (주 3~5회 운동)", isSelected = activityLevel == 1.55, onClick = { activityLevel = 1.55 }, primaryColor = primaryColor)
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // ★ 식단 목표 UI 추가
-                Text("식단 목표", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "다이어트\n(-500kcal)", isSelected = goal == "다이어트", onClick = { goal = "다이어트" }, primaryColor = primaryColor)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "체중 유지\n(기본량)", isSelected = goal == "체중 유지", onClick = { goal = "체중 유지" }, primaryColor = primaryColor)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "벌크업\n(+300kcal)", isSelected = goal == "벌크업", onClick = { goal = "벌크업" }, primaryColor = primaryColor)
-                }
             }
         },
         confirmButton = {
@@ -2063,25 +2125,10 @@ fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int
                     val h = height.toDoubleOrNull() ?: 0.0
                     val w = weight.toDoubleOrNull() ?: 0.0
                     if (a > 0 && h > 0 && w > 0) {
-                        // 1. Mifflin-St Jeor 기초대사량(BMR) 계산식
-                        val bmr = if (gender == "남성") {
-                            (10 * w) + (6.25 * h) - (5 * a) + 5
-                        } else {
-                            (10 * w) + (6.25 * h) - (5 * a) - 161
-                        }
-
-                        // 2. 유지 칼로리(TDEE) 계산
-                        val tdee = bmr * activityLevel
-
-                        // 3. 사용자의 목표에 따른 최종 하루 권장 칼로리 도출
-                        val finalCalories = when (goal) {
-                            "다이어트" -> tdee - 500
-                            "벌크업" -> tdee + 300
-                            else -> tdee // 체중 유지
-                        }
-
-                        // 계산된 최종 값을 메인 상태로 전달 (소수점은 버리고 정수로 변환)
-                        onCalculate(finalCalories.toInt())
+                        // Mifflin-St Jeor 기초대사량 계산식 (보다 최신/정확한 공식)
+                        val bmr = if (gender == "남성") (10 * w) + (6.25 * h) - (5 * a) + 5 else (10 * w) + (6.25 * h) - (5 * a) - 161
+                        val tdee = (bmr * activityLevel).toInt() // 활동 대사량(TDEE) 계산
+                        onCalculate(tdee)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
@@ -2112,6 +2159,8 @@ fun MyPageMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title:
         }
     }
 }
+}
+
 
 @Composable
 fun MyPageToggleItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
@@ -2130,6 +2179,7 @@ fun MyPageToggleItem(icon: androidx.compose.ui.graphics.vector.ImageVector, titl
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 fun RecipeSearchScreen(
     onRecipeClick: (RecipeEntity) -> Unit = {} // 레시피 클릭 시 상세화면 이동용

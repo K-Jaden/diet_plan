@@ -1,4 +1,4 @@
-package com.example.menu_recipe_app.dbimport
+package com.example.menu_recipe_app.db
 
 import androidx.room.Dao
 import androidx.room.Insert
