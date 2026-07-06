@@ -85,7 +85,8 @@ fun LoginScreen(navController: NavController, onLoginSuccess: (UserEntity) -> Un
                     }
                     coroutineScope.launch(Dispatchers.IO) {
                         val db = AppDatabase.getDatabase(context)
-                        val user = db.userDao().login(userId, password)
+                        val hashedPw = com.example.menu_recipe_app.util.SecurityUtil.hashPassword(password)
+                        val user = db.userDao().login(userId, hashedPw)
                         withContext(Dispatchers.Main) {
                             if (user != null) {
                                 Toast.makeText(context, "${user.name}님 환영합니다!", Toast.LENGTH_SHORT).show()
@@ -198,9 +199,10 @@ fun SignUpScreen(navController: NavController) {
                                 Toast.makeText(context, "이미 존재하는 아이디입니다.", Toast.LENGTH_SHORT).show()
                             }
                         } else {
+                            val hashedPw = com.example.menu_recipe_app.util.SecurityUtil.hashPassword(password)
                             val newUser = UserEntity(
                                 userId = userId,
-                                password = password,
+                                password = hashedPw,
                                 name = name
                             )
                             db.userDao().insertUser(newUser)

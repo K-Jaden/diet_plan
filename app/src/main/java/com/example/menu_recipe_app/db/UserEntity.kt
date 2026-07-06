@@ -8,7 +8,7 @@ data class UserEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
     val userId: String,        // 로그인용 아이디
-    val password: String,      // 비밀번호 (평문)
+    val password: String,      // 비밀번호 (SHA-256 해시)
     val name: String,          // 이름 또는 닉네임
     val gender: String = "",   // 성별 (예: "남성", "여성")
     val age: Int = 0,          // 나이
