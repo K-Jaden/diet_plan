@@ -1575,7 +1575,7 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     var searchQuery by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<RecipeEntity>>(emptyList()) }
+    var recipeList by remember { mutableStateOf<List<RecipeEntity>>(emptyList()) }
 
     fun performSearch(query: String) {
         lifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
@@ -1586,7 +1586,7 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
                 db.recipeDao().searchRecipes(query)
             }
             withContext(Dispatchers.Main) {
-                searchResults = results
+                recipeList = results
             }
         }
     }
@@ -1600,49 +1600,70 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
         containerColor = backgroundColor,
         topBar = {
             TopAppBar(
-                title = { Text("레시피 검색", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                title = { Text("레시피", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
             )
         },
         bottomBar = { BottomNavigationBar(navController, "recipe") }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(16.dp)) {
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { newText ->
                     searchQuery = newText
                     performSearch(newText)
                 },
-                label = { Text("레시피 또는 재료 검색") },
-                placeholder = { Text("예: 김치, 돼지고기, 찌개") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text("어떤 요리를 만들어볼까요?", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = "검색",
+                        tint = Color.Gray
+                    )
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
+                ),
+                shape = RoundedCornerShape(16.dp),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             )
-
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (searchQuery.isNotBlank() && searchResults.isEmpty()) {
+            if (searchQuery.isNotBlank() && recipeList.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("'$searchQuery'에 대한 검색 결과가 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(searchResults.size) { index ->
-                        val recipe = searchResults[index]
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clickable { onNavigateToDetail(recipe.menuName) },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(recipeList.size) { index ->
+                        val recipe = recipeList[index]
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { onNavigateToDetail(recipe.menuName) }
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(text = recipe.menuName, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(text = "재료: ${recipe.ingredients}", fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                            }
+                            AsyncImage(
+                                model = recipe.imageUrl,
+                                contentDescription = recipe.menuName,
+                                modifier = Modifier.size(90.dp).clip(CircleShape)
+                                    .background(Color(0xFFF0F0F0)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                recipe.menuName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
