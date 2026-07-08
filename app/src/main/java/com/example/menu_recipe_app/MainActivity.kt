@@ -1820,6 +1820,16 @@ fun SelectableOptionChip(
         val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
         val primaryGreen = Color(0xFF5A8754)
 
+        // ViewModel에서 선택된 날짜와 해당 날짜의 식단 상태를 관찰합니다.
+        val selectedDate by dietViewModel.currentSelectedDate.collectAsState()
+        val selectedDateMeals by dietViewModel.selectedDateMeals.collectAsState()
+        val hasDietPlan = selectedDateMeals.isNotEmpty()
+
+        // 화면 진입 시 초기 데이터 로드
+        LaunchedEffect(Unit) {
+            dietViewModel.fetchMealsForDate(selectedDate)
+        }
+
         Scaffold(
             containerColor = backgroundColor,
             topBar = {
@@ -1837,11 +1847,11 @@ fun SelectableOptionChip(
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
-                var tempDate by remember { mutableStateOf(LocalDate.now()) }
-
                 CalendarCard(
-                    selectedDate = tempDate,
-                    onDateSelected = { tempDate = it },
+                    selectedDate = selectedDate,
+                    onDateSelected = { clickedDate ->
+                        dietViewModel.fetchMealsForDate(clickedDate)
+                    },
                     onNavigateToCalendar = {},
                     dietViewModel = dietViewModel // ★ 여기서 넘겨줌
                 )
@@ -1851,19 +1861,42 @@ fun SelectableOptionChip(
                 Text("선택한 날짜의 식단", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth().height(150.dp),
-                    colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                if (!hasDietPlan) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                        colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("해당 날짜에 등록된 식단이 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.Restaurant, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("해당 날짜에 등록된 식단이 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                        }
+                    }
+                } else {
+                    // DB에서 가져온 식단 목록을 표시
+                    selectedDateMeals.forEach { meal ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(text = meal.mealType, fontSize = 14.sp, color = primaryGreen, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(text = meal.menuName, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                if (meal.calories != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = "${meal.calories} kcal", fontSize = 14.sp, color = Color.Gray)
+                                }
+                            }
+                        }
                     }
                 }
             }
