@@ -1581,7 +1581,7 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
         lifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(context)
             val results = if (query.isBlank()) {
-                emptyList()
+                db.recipeDao().getAllRecipes() // 검색어가 비어있으면 전체 레시피 보여주기
             } else {
                 db.recipeDao().searchRecipes(query)
             }
@@ -1589,6 +1589,11 @@ fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToD
                 searchResults = results
             }
         }
+    }
+
+    // 화면 진입 시 처음에 전체 리스트를 한 번 불러옵니다.
+    LaunchedEffect(Unit) {
+        performSearch("")
     }
 
     Scaffold(
