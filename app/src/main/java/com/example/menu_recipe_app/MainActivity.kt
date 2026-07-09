@@ -176,34 +176,42 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
         ) { backStackEntry ->
             val hasIngredients = backStackEntry.arguments?.getBoolean("hasIngredients") ?: false
             GenerateStep2Screen(
-                dietViewModel = dietViewModel, // ★ 추가됨
+                dietViewModel = dietViewModel,
                 hasIngredients = hasIngredients,
-                ticketCount = ticketCount,
                 userCalories = userCalories,
+                onBackClick = { navController.popBackStack() },
+                onNextClick = { navController.navigate("generate_step3") } // ★ 다음 단계(영양사 선택)로 이동
+            )
+        }
+        composable("generate_step3") {
+            // ★ 새로 추가된 영양사 선택 단계 (여기서 티켓 결제)
+            GenerateStep3Screen(
+                ticketCount = ticketCount,
                 onBackClick = { navController.popBackStack() },
                 onNextClick = {
                     if (ticketCount >= 3) {
                         ticketCount -= 3
-                        navController.navigate("generate_step3")
+                        navController.navigate("generate_step4") // 식단 확인으로 이동
                     }
                 }
             )
         }
-        composable("generate_step3") {
-            GenerateStep3Screen(
+        composable("generate_step4") {
+            // ★ 기존의 Step 3 (식단 확인)
+            GenerateStep4Screen(
                 ticketCount = ticketCount,
                 onDeductTicket = { amount -> ticketCount -= amount },
                 onBackClick = { navController.popBackStack() },
-                // ★ 에러 방지: generatedMeals를 받아 저장!
                 onSaveClick = { generatedMeals ->
                     dietViewModel.saveGeneratedMeals(generatedMeals)
-                    navController.navigate("generate_step4")
+                    navController.navigate("generate_step5") // 완료 화면으로 이동
                 },
                 onChangeAgentClick = { navController.popBackStack() }
             )
         }
-        composable("generate_step4") {
-            GenerateStep4Screen(onBackClick = { navController.popBackStack() }, onGoMainClick = { navController.navigate("main") { popUpTo("main") { inclusive = false } } }, onEditClick = { navController.popBackStack() })
+        composable("generate_step5") {
+            // ★ 기존의 Step 4 (완료)
+            GenerateStep5Screen(onBackClick = { navController.popBackStack() }, onGoMainClick = { navController.navigate("main") { popUpTo("main") { inclusive = false } } }, onEditClick = { navController.popBackStack() })
         }
         composable("recipe") {
             RecipeScreen(
@@ -259,7 +267,7 @@ fun StepIndicator(currentStep: Int) {
     val textGray = Color.Gray
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        val steps = listOf("재료 선택", "식단 유형", "식단 확인", "완료")
+        val steps = listOf("재료 선택", "식단 유형", "영양사 선택", "식단 확인", "완료")
         steps.forEachIndexed { index, title ->
             val stepNumber = index + 1
             val isCompleted = stepNumber < currentStep
@@ -855,20 +863,16 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenerateStep2Screen(
-    dietViewModel: DietViewModel, // ★ 누락되었던 뷰모델 파라미터 추가!
+    dietViewModel: DietViewModel,
     hasIngredients: Boolean,
-    ticketCount: Int,
     userCalories: Int?,
     onBackClick: () -> Unit,
     onNextClick: () -> Unit
 ) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
-    val ticketCost = 3
 
     var isAnalyzing by remember { mutableStateOf(hasIngredients) }
-    var selectedAgent by remember { mutableStateOf<String?>(null) }
-    var familyMemberCount by remember { mutableIntStateOf(3) }
     var mealsPerDay by remember { mutableIntStateOf(3) }
     var includeSnack by remember { mutableStateOf(false) }
     var mealStyle by remember { mutableStateOf("골고루") }
@@ -898,29 +902,21 @@ fun GenerateStep2Screen(
             )
         },
         bottomBar = {
-            // ★ 중첩되어 꼬여있던 bottomBar 코드를 깔끔하게 1개로 정리했습니다.
             if (!isAnalyzing) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    val canAfford = ticketCount >= ticketCost
                     Button(
                         onClick = {
-                            if (canAfford) {
-                                // ★ 2단계: 선택된 영양사와 끼니 수를 DB에 영구 저장!
-                                dietViewModel.saveUserProfile(
-                                    agent = selectedAgent ?: "실속관리",
-                                    meals = mealsPerDay
-                                )
-                                onNextClick()
-                            }
-                            else android.widget.Toast.makeText(context, "티켓이 부족합니다...", android.widget.Toast.LENGTH_SHORT).show()
+                            dietViewModel.saveUserProfile(
+                                agent = "실속관리",
+                                meals = mealsPerDay
+                            )
+                            onNextClick()
                         },
-                        enabled = selectedAgent != null,
-                        colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryGreen),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) {
-                        if (canAfford) Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
-                        else Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("다음 단계로", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
@@ -1002,31 +998,6 @@ fun GenerateStep2Screen(
                         Text("다양한 식재료를 활용해 어떤 식단표를 짤까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    Spacer(modifier = Modifier.height(40.dp))
-                    Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구 추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
-                    androidx.compose.animation.AnimatedVisibility(visible = selectedAgent == "패밀리케어") {
-                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp)).border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp)).padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("👨‍👩‍👧‍👦 식사 인원을 알려주세요", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("인원에 맞춰 양과 레시피를 조절할게요", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { if (familyMemberCount > 1) familyMemberCount-- }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, CircleShape)) {
-                                    Icon(Icons.Default.Remove, contentDescription = "빼기", tint = if (familyMemberCount > 1) Color.Black else Color.LightGray)
-                                }
-                                Text("$familyMemberCount 명", modifier = Modifier.padding(horizontal = 24.dp), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
-                                IconButton(onClick = { if (familyMemberCount < 10) familyMemberCount++ }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant, CircleShape)) { Icon(Icons.Default.Add, contentDescription = "더하기") }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
@@ -1133,11 +1104,87 @@ fun AgentCard(title: String, description: String, targetIcon: androidx.compose.u
 }
 
 // ==========================================
-// 3단계: 식단 확인 (재생성 팝업 및 과금 로직 추가)
+// 3단계: 영양사(에이전트) 선택 + 티켓 결제
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GenerateStep3Screen(ticketCount: Int, onBackClick: () -> Unit, onNextClick: () -> Unit) {
+    val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
+    val primaryGreen = Color(0xFF5A8754)
+    val ticketCost = 3
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    var selectedAgent by remember { mutableStateOf<String?>(null) }
+    var familyMemberCount by remember { mutableIntStateOf(3) }
+
+    Scaffold(
+        containerColor = backgroundColor,
+        topBar = { TopAppBar(title = { Text("식단표 생성", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 18.sp) }, navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } }, actions = { Spacer(modifier = Modifier.width(48.dp)) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)) },
+        bottomBar = {
+            Column(modifier = Modifier.padding(20.dp)) {
+                val canAfford = ticketCount >= ticketCost
+                Button(
+                    onClick = {
+                        if (canAfford) onNextClick()
+                        else android.widget.Toast.makeText(context, "티켓이 부족합니다. 메인 화면에서 충전해주세요.", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    enabled = selectedAgent != null,
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    if (canAfford) Text("🎫 ${ticketCost}개를 사용하여 식단 만들기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedAgent != null) Color.White else Color.Gray)
+                    else Text("티켓이 부족해요 (현재: ${ticketCount}개)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
+            Spacer(modifier = Modifier.height(16.dp))
+            StepIndicator(currentStep = 3) // ★ Step 3
+            Spacer(modifier = Modifier.height(40.dp))
+
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                Text("어떤 영양사에게 식단을 맡길까요?", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("전문 영양사가 당신의 목표에 맞는 식단을 설계해드려요.", fontSize = 14.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(32.dp))
+
+                AgentCard("자취생 영양사", "가성비와 식재료 낭비 방지에 초점을 맞춘 1인 가구추천 식단", Icons.Default.Eco, "절약형 식단을 원하는 분", true, selectedAgent == "실속관리", { selectedAgent = "실속관리" }, primaryGreen)
+                Spacer(modifier = Modifier.height(16.dp))
+                AgentCard("가족 영양사", "3~4인 가구가 선택하기 좋은 식단 추천", Icons.Default.FamilyRestroom, "주부 및 다인 가구", false, selectedAgent == "패밀리케어", { selectedAgent = "패밀리케어" }, primaryGreen)
+
+                androidx.compose.animation.AnimatedVisibility(visible = selectedAgent == "패밀리케어") {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp).background(Color(0xFFF4F9F4), RoundedCornerShape(12.dp)).border(1.dp, primaryGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp)).padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("👨‍👩‍👧‍👦 식사 인원을 알려주세요", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("인원에 맞춰 양과 레시피를 조절할게요", fontSize = 11.sp, color = Color.Gray)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { if (familyMemberCount > 1) familyMemberCount-- }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, Color(0xFFEEEEEE), CircleShape)) {
+                                Icon(Icons.Default.Remove, contentDescription = "빼기", tint = if (familyMemberCount > 1) Color.Black else Color.LightGray)
+                            }
+                            Text("$familyMemberCount 명", modifier = Modifier.padding(horizontal = 24.dp), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = primaryGreen)
+                            IconButton(onClick = { if (familyMemberCount < 10) familyMemberCount++ }, modifier = Modifier.size(36.dp).background(Color.White, CircleShape).border(1.dp, Color(0xFFEEEEEE), CircleShape)) { Icon(Icons.Default.Add, contentDescription = "더하기") }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                AgentCard("혈당 케어 영양사", "혈당 스파이크를 방지하는 저당, 저탄수화물 위주의 건강 식단", Icons.Default.MonitorHeart, "당뇨 및 건강 관리가 필요한 분", false, selectedAgent == "혈당케어", { selectedAgent = "혈당케어" }, primaryGreen)
+                Spacer(modifier = Modifier.height(40.dp))
+            }
+        }
+    }
+}
+
+// ==========================================
+// 4단계: 식단 확인 (재생성 팝업 및 과금 로직 추가)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun GenerateStep3Screen(
+fun GenerateStep4Screen(
     ticketCount: Int,
     onDeductTicket: (Int) -> Unit,
     onBackClick: () -> Unit,
@@ -1252,7 +1299,7 @@ fun GenerateStep3Screen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 3)
+            StepIndicator(currentStep = 4)
             Spacer(modifier = Modifier.height(24.dp))
 
             if (isRegenerating) {
@@ -1463,11 +1510,11 @@ fun MealRow(mealType: String, primaryColor: Color, menu: String) {
 }
 
 // ==========================================
-// 4단계: 완료
+// 5단계: 완료
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GenerateStep4Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEditClick: () -> Unit) {
+fun GenerateStep5Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEditClick: () -> Unit) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
 
@@ -1499,7 +1546,7 @@ fun GenerateStep4Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEd
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(modifier = Modifier.height(16.dp))
-            StepIndicator(currentStep = 4)
+            StepIndicator(currentStep = 5)
             Spacer(modifier = Modifier.height(48.dp))
             Box(contentAlignment = Alignment.Center) {
                 Box(modifier = Modifier.size(140.dp).clip(CircleShape).background(Color(0xFFF1F8F1)))
