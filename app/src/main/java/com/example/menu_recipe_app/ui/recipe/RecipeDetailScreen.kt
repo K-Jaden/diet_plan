@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material3.*
@@ -62,8 +63,13 @@ fun RecipeDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* TODO: 스크랩 기능(기획서 체크박스 항목) */ }) {
-                        Icon(Icons.Default.BookmarkBorder, contentDescription = "저장")
+                    val fav = (state as? RecipeDetailUiState.Success)?.recipe?.isFavorite == true
+                    IconButton(onClick = { viewModel.toggleFavorite() }) {
+                        Icon(
+                            if (fav) Icons.Filled.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = "즐겨찾기",
+                            tint = if (fav) primaryGreen else Color.Unspecified
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)

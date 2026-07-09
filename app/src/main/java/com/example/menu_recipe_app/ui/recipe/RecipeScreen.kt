@@ -57,7 +57,8 @@ fun RecipeScreen(
     val query by viewModel.searchQuery.collectAsState()
     val preload by viewModel.preloadState.collectAsState()
     val prefetch by com.example.menu_recipe_app.repository.RecipePrefetcher.state.collectAsState()
-
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     Scaffold(
         containerColor = backgroundColor,
         topBar = {
@@ -173,6 +174,47 @@ fun RecipeScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             )
+            // ── 카테고리 / 즐겨찾기 필터 칩 ──
+            androidx.compose.foundation.lazy.LazyRow(
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    FilterChip(
+                        selected = favoritesOnly,
+                        onClick = { viewModel.toggleFavoritesFilter() },
+                        label = { Text("⭐ 즐겨찾기", fontSize = 13.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFFFFF3D6),
+                            selectedLabelColor = Color(0xFFB8860B)
+                        )
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = selectedCategory == null && !favoritesOnly,
+                        onClick = { viewModel.onCategorySelected(null) },
+                        label = { Text("전체", fontSize = 13.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFFE0EBE0),
+                            selectedLabelColor = primaryGreen
+                        )
+                    )
+                }
+                items(RecipeViewModel.CATEGORIES.size) { i ->
+                    val cat = RecipeViewModel.CATEGORIES[i]
+                    FilterChip(
+                        selected = selectedCategory == cat,
+                        onClick = { viewModel.onCategorySelected(cat) },
+                        label = { Text(cat, fontSize = 13.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFFE0EBE0),
+                            selectedLabelColor = primaryGreen
+                        )
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
 
             if (recipes.isEmpty()) {

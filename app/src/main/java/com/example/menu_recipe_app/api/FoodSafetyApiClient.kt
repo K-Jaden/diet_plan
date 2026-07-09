@@ -102,7 +102,10 @@ class FoodSafetyApiClient(private val apiKey: String) {
                 }.joinToString("\n"),
                 imageUrl = r.optString("ATT_FILE_NO_MAIN").ifBlank { null },
                 servings = servings,
-                calories = r.optString("INFO_ENG").ifBlank { null }
+                calories = r.optString("INFO_ENG").ifBlank { null },
+                category = r.optString("RCP_PAT2").ifBlank { null }
+
+
             )
         }
     }

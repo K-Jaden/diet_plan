@@ -43,6 +43,13 @@ interface RecipeDao {
     @Query("SELECT * FROM recipe_table ORDER BY id DESC")
     fun observeAllRecipes(): Flow<List<RecipeEntity>>
 
+
+    //즐겨찾기
+    @Query("UPDATE recipe_table SET isFavorite = :fav WHERE id = :id")
+    suspend fun setFavorite(id: Int, fav: Boolean)
+
+
+
     /** 실시간 검색: 이름 OR 재료 (팀원 의도 반영) */
     @Query(
         "SELECT * FROM recipe_table " +

@@ -18,7 +18,7 @@ class RecipeRepository(
         private const val PRELOAD_TOTAL = 1000
         private const val PAGE_SIZE = 100
     }
-
+    suspend fun setFavorite(id: Int, fav: Boolean) = dao.setFavorite(id, fav)
     private val mutex = Mutex()
     private val inFlight = mutableSetOf<String>()
 
