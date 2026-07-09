@@ -28,7 +28,7 @@
 **결과**: `feat/agents`에 develop의 UI 작업 + recipe-caching의 크롤러 기반 레시피 파이프라인 + 기존 AI 식단 생성(RAG/GeminiService/MealPlanEntity)이 모두 한 브랜치에 공존. 레시피 저장 시 실제 생성된 메뉴로 `RecipePrefetcher`를 트리거하도록 연결해 recipe-caching이 남겨둔 TODO(더미 메뉴 목록)도 함께 해소.
 
 **후속 필요 항목** (이번엔 손대지 않음, 자체 판단으로 남김):
-- develop이 만든 `MealEntity`/`dietViewModel.saveGeneratedMeals` 경로가 AI 생성 플로우와 아직 연결 안 됨 (달력/메인화면 표시용 별도 테이블로 남아있음) — 두 저장 경로를 통합할지는 제품 결정 필요
+- ~~develop이 만든 `MealEntity`/`dietViewModel.saveGeneratedMeals` 경로가 AI 생성 플로우와 아직 연결 안 됨~~ → 2026-07-09 `MealPlanEntity`로 통합 완료 (아래 항목 참고)
 - ~~`db/RecipeRepository.kt`(구, RAG용)와 `repository/RecipeRepository.kt`(신, recipe-caching)가 같은 이름으로 공존~~ → 2026-07-09 `RagRecipeRepository`로 리네이밍 완료 (아래 항목 참고)
 
 ---
@@ -39,6 +39,13 @@
 **해결**: `CalendarCard`가 `dietViewModel` 의존을 끊고 `mealPlanDao.getAllMealPlanDates()`를 직접 조회하도록 변경 (메인 화면의 "오늘 이미 계획 있음" 체크가 쓰던 것과 동일한 소스). `CalendarCard`/`CalendarScreen`에서 더 이상 안 쓰는 `dietViewModel` 파라미터 제거.
 
 **결과**: 메인 화면 캘린더와 캘린더 탭이 같은 쿼리를 보므로 항상 일치. `./gradlew compileDebugKotlin` 통과 확인.
+
+## 2026-07-09: 식단 저장소 이원화(MealEntity vs MealPlanEntity) → MealPlanEntity로 통합
+**문제**: `MealEntity`(develop, `mealDao`)와 `MealPlanEntity`(feat/agents, `mealPlanDao`) 두 테이블이 공존. AI 생성 플로우(`GenerateStep3Screen`)는 `MealPlanEntity`에만 저장하고, `MealEntity`는 어디서도 쓰이지 않는 빈 테이블로 남아있었음(위 캘린더 불일치 버그의 근본 원인). 필드를 비교해보니 `MealEntity`(date, mealType, menuName, calories, isEaten)가 `MealPlanEntity`(같은 필드 + agentType, ingredients, recipe, totalDayCalories)의 사실상 부분집합이라 통합이 자연스러웠음.
+
+**해결**: `MealPlanEntity`에 `isEaten`(둘 중 유일하게 없던 필드) 추가. `MealPlanDao`는 기존 suspend 쿼리 외에 `observeMealsByDate`/`observeMealsBetweenDates`(Flow 반환)를 추가해 `MealDao`가 제공하던 "DB 변경 시 자동 갱신" 기능을 대체. `DietViewModel`이 `MealPlanDao`/`MealPlanEntity`를 쓰도록 재작성하고 죽은 코드(`saveGeneratedMeals`)는 삭제. `AppDatabase`에서 `MealEntity` 제거하며 버전 5→6, `MealDao.kt`/`MealEntity.kt` 삭제.
+
+**결과**: 식단 데이터의 단일 진실 공급원이 `MealPlanEntity` 하나로 정리됨. `./gradlew compileDebugKotlin` 통과 확인.
 
 ## 2026-07-09: RecipeRepository 이름 중복 → RagRecipeRepository로 리네이밍
 **문제**: `db/RecipeRepository.kt`(feat/agents, RAG 임베딩 시딩/검색용)와 `repository/RecipeRepository.kt`(recipe-caching, 레시피 탭 조회용)가 같은 클래스명으로 다른 패키지에 공존해 혼동 소지.
