@@ -29,7 +29,21 @@
 
 **후속 필요 항목** (이번엔 손대지 않음, 자체 판단으로 남김):
 - develop이 만든 `MealEntity`/`dietViewModel.saveGeneratedMeals` 경로가 AI 생성 플로우와 아직 연결 안 됨 (달력/메인화면 표시용 별도 테이블로 남아있음) — 두 저장 경로를 통합할지는 제품 결정 필요
-- `db/RecipeRepository.kt`(구, RAG용)와 `repository/RecipeRepository.kt`(신, recipe-caching)가 같은 이름으로 공존 — 혼동 방지를 위해 리네이밍 검토 권장
+- ~~`db/RecipeRepository.kt`(구, RAG용)와 `repository/RecipeRepository.kt`(신, recipe-caching)가 같은 이름으로 공존~~ → 2026-07-09 `RagRecipeRepository`로 리네이밍 완료 (아래 항목 참고)
+
+---
+
+## 2026-07-09: 메인/캘린더 화면 계획일 표시 불일치 → CalendarCard가 mealPlanDao 직접 조회하도록 수정
+**문제**: 메인 화면 임베디드 캘린더와 캘린더 탭이 서로 다른 정보를 보여줌. 원인은 위 3-way 머지에서 `CalendarCard`의 "계획 있음" 점 표시가 `dietViewModel.currentMonthMeals`(develop이 만든 `mealDao`/`MealEntity`)를 근거로 했는데, AI 식단 생성 플로우(`GenerateStep3Screen`)는 `mealPlanDao`/`MealPlanEntity`에만 저장함. `MealEntity` 테이블에 아무도 쓰지 않으니 두 화면 모두 캘린더 점 표시가 항상 비어있었고, 캘린더 탭 아래의 실제 식단 목록(`mealPlanDao` 기준)과 어긋나 보였음.
+
+**해결**: `CalendarCard`가 `dietViewModel` 의존을 끊고 `mealPlanDao.getAllMealPlanDates()`를 직접 조회하도록 변경 (메인 화면의 "오늘 이미 계획 있음" 체크가 쓰던 것과 동일한 소스). `CalendarCard`/`CalendarScreen`에서 더 이상 안 쓰는 `dietViewModel` 파라미터 제거.
+
+**결과**: 메인 화면 캘린더와 캘린더 탭이 같은 쿼리를 보므로 항상 일치. `./gradlew compileDebugKotlin` 통과 확인.
+
+## 2026-07-09: RecipeRepository 이름 중복 → RagRecipeRepository로 리네이밍
+**문제**: `db/RecipeRepository.kt`(feat/agents, RAG 임베딩 시딩/검색용)와 `repository/RecipeRepository.kt`(recipe-caching, 레시피 탭 조회용)가 같은 클래스명으로 다른 패키지에 공존해 혼동 소지.
+**해결**: 전자를 `RagRecipeRepository`로 리네이밍 (역할이 이름에 드러나도록). `repository/RecipeRepository.kt`는 recipe-caching이 만든 "주" 레시피 조회 경로라 원래 이름 유지.
+**결과**: `MainActivity.kt`의 4개 참조(import 1 + 생성자 호출 3) 갱신, 컴파일 확인.
 
 ---
 
