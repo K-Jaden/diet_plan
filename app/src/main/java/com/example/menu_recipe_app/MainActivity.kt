@@ -973,12 +973,12 @@ fun GenerateStep2Screen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                Text("메인 요리 (국/반찬)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                Text("하루 추천 메인 요리 개수", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "1끼 추천(기본)", isSelected = mealReuseCount == 1, onClick = { mealReuseCount = 1 }, primaryColor = primaryGreen)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "2끼 추천", isSelected = mealReuseCount == 2, onClick = { mealReuseCount = 2 }, primaryColor = primaryGreen)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "3끼 추천", isSelected = mealReuseCount == 3, onClick = { mealReuseCount = 3 }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "1개 (하루 종일)", isSelected = mealReuseCount == 1, onClick = { mealReuseCount = 1 }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "2개 (번갈아서)", isSelected = mealReuseCount == 2, onClick = { mealReuseCount = 2 }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "매 끼니 새롭게", isSelected = mealReuseCount == 3, onClick = { mealReuseCount = 3 }, primaryColor = primaryGreen)
                 }
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -1003,40 +1003,18 @@ fun GenerateStep2Screen(
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "밥 필수", isSelected = selectedStyles.contains("밥 필수"), onClick = { toggleStyle("밥 필수") }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "골고루", isSelected = selectedStyles.contains("골고루"), onClick = { toggleStyle("골고루") }, primaryColor = primaryGreen)
                     SelectableOptionChip(modifier = Modifier.weight(1f), text = "국 필수", isSelected = selectedStyles.contains("국 필수"), onClick = { toggleStyle("국 필수") }, primaryColor = primaryGreen)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "일품/간편식", isSelected = selectedStyles.contains("일품/간편식"), onClick = { toggleStyle("일품/간편식") }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "한식", isSelected = selectedStyles.contains("한식"), onClick = { toggleStyle("한식") }, primaryColor = primaryGreen)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SelectableOptionChip(modifier = Modifier.weight(1f), text = "양식", isSelected = selectedStyles.contains("양식"), onClick = { toggleStyle("양식") }, primaryColor = primaryGreen)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "일식", isSelected = selectedStyles.contains("일식"), onClick = { toggleStyle("일식") }, primaryColor = primaryGreen)
                     SelectableOptionChip(modifier = Modifier.weight(1f), text = "중식", isSelected = selectedStyles.contains("중식"), onClick = { toggleStyle("중식") }, primaryColor = primaryGreen)
-                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "골고루", isSelected = selectedStyles.contains("골고루"), onClick = { toggleStyle("골고루") }, primaryColor = primaryGreen)
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text("1주일 식단 다양성 설정", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("매일 다른 스타일로 구성 (권장)", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text("선택한 밥/국/양식/일식/중식 등의 스타일을 요일별로 순환 배치하여 질리지 않도록 합니다.", fontSize = 12.sp, color = Color.Gray, lineHeight = 16.sp)
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Switch(
-                        checked = autoDiversify,
-                        onCheckedChange = { autoDiversify = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = primaryGreen, uncheckedThumbColor = Color.White, uncheckedTrackColor = Color.LightGray)
-                    )
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "일식", isSelected = selectedStyles.contains("일식"), onClick = { toggleStyle("일식") }, primaryColor = primaryGreen)
                 }
                 Spacer(modifier = Modifier.height(40.dp))
+
             }
     }
     }

@@ -227,16 +227,23 @@ class GeminiService {
         sb.appendLine("【식단 스타일】$mealStyle")
         sb.appendLine()
 
-        // 메뉴 유지 (Meal Reuse) 설정
-        if (mealReuseCount > 1) {
-            sb.appendLine("【현실성 반영 규칙 (요리 연속 섭취)】")
-            sb.appendLine("사용자의 설정에 따라, 한 번 조리한 메인 요리(국, 찌개, 메인 반찬)는 당일 연속으로 ${mealReuseCount}끼 동안 동일하게 메뉴를 유지(배치)하세요.")
-            sb.appendLine("예: 아침에 만든 요리를 ${if (mealReuseCount == 2) "점심까지" else "저녁까지"} 똑같이 배치하여 조리 수고를 덜어주세요.")
-            sb.appendLine()
-        } else {
-            sb.appendLine("【메뉴 다양성】")
-            sb.appendLine("사용자가 '매 끼니 다른 메뉴'를 원하므로, 당일 내에서도 식사가 겹치지 않도록 항상 새로운 메뉴를 추천해주세요.")
-            sb.appendLine()
+        // 메인 요리 추천 개수 설정
+        when (mealReuseCount) {
+            1 -> {
+                sb.appendLine("【현실성 반영 규칙 (하루 1개 메인 요리)】")
+                sb.appendLine("사용자의 설정에 따라, 하루 종일(당일 모든 끼니) 동일한 메인 요리(국, 찌개, 메인 반찬)를 배치하여 조리 수고를 최소화하세요.")
+                sb.appendLine()
+            }
+            2 -> {
+                sb.appendLine("【현실성 반영 규칙 (하루 2개 메인 요리)】")
+                sb.appendLine("사용자의 설정에 따라, 하루에 딱 2개의 메인 요리만 추천하여 최소 한 번은 요리를 재사용(재배치)하도록 하세요.")
+                sb.appendLine()
+            }
+            else -> {
+                sb.appendLine("【메뉴 다양성 (매 끼니 다름)】")
+                sb.appendLine("사용자의 설정에 따라, 당일 내에서도 식사가 겹치지 않도록 매 끼니마다 항상 다른 새로운 요리를 추천해주세요.")
+                sb.appendLine()
+            }
         }
 
         // 추가 요청사항
