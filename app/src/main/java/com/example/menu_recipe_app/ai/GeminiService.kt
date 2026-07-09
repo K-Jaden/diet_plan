@@ -53,7 +53,8 @@ class GeminiService {
         includeSnack: Boolean,
         mealStyle: String,
         additionalRequest: String = "",
-        allowedRecipes: List<RecipeEntity> = emptyList()
+        allowedRecipes: List<RecipeEntity> = emptyList(),
+        mealReuseCount: Int = 1
     ): MealPlanResult {
 
         // 1. 유저 프롬프트 조립
@@ -65,7 +66,8 @@ class GeminiService {
             includeSnack = includeSnack,
             mealStyle = mealStyle,
             additionalRequest = additionalRequest,
-            allowedRecipes = allowedRecipes
+            allowedRecipes = allowedRecipes,
+            mealReuseCount = mealReuseCount
         )
 
         Log.d(TAG, "=== 프롬프트 전송 ===")
@@ -168,7 +170,8 @@ class GeminiService {
         includeSnack: Boolean,
         mealStyle: String,
         additionalRequest: String,
-        allowedRecipes: List<RecipeEntity>
+        allowedRecipes: List<RecipeEntity>,
+        mealReuseCount: Int
     ): String {
         val sb = StringBuilder()
 
@@ -223,6 +226,18 @@ class GeminiService {
         }
         sb.appendLine("【식단 스타일】$mealStyle")
         sb.appendLine()
+
+        // 메뉴 유지 (Meal Reuse) 설정
+        if (mealReuseCount > 1) {
+            sb.appendLine("【현실성 반영 규칙 (요리 연속 섭취)】")
+            sb.appendLine("사용자의 설정에 따라, 한 번 조리한 메인 요리(국, 찌개, 메인 반찬)는 당일 연속으로 ${mealReuseCount}끼 동안 동일하게 메뉴를 유지(배치)하세요.")
+            sb.appendLine("예: 아침에 만든 요리를 ${if (mealReuseCount == 2) "점심까지" else "저녁까지"} 똑같이 배치하여 조리 수고를 덜어주세요.")
+            sb.appendLine()
+        } else {
+            sb.appendLine("【메뉴 다양성】")
+            sb.appendLine("사용자가 '매 끼니 다른 메뉴'를 원하므로, 당일 내에서도 식사가 겹치지 않도록 항상 새로운 메뉴를 추천해주세요.")
+            sb.appendLine()
+        }
 
         // 추가 요청사항
         if (additionalRequest.isNotBlank()) {

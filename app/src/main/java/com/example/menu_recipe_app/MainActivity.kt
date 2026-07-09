@@ -171,6 +171,7 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
     var mealsPerDay by remember { mutableIntStateOf(3) }
     var includeSnack by remember { mutableStateOf(false) }
     var mealStyle by remember { mutableStateOf("골고루") }
+    var mealReuseCount by remember { mutableIntStateOf(1) }
 
     androidx.navigation.compose.NavHost(navController = navController, startDestination = "main") {
         composable("main") {
@@ -203,12 +204,13 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
                 onBackClick = { navController.popBackStack() },
                 // ★ 2단계에서 수집한 재료/설정을 상위 상태로 끌어올림 (기존엔 이 값들이 어디에도
                 // 저장되지 않아 AI 생성 호출이 항상 빈 재료 목록을 받던 버그가 있었음)
-                onNextClick = { ingredients, excluded, meals, snack, style ->
+                onNextClick = { ingredients, excluded, meals, snack, style, reuseCount ->
                     userIngredients = ingredients
                     userExcludedIngredients = excluded
                     mealsPerDay = meals
                     includeSnack = snack
                     mealStyle = style
+                    mealReuseCount = reuseCount
                     navController.navigate("generate_step3")
                 }
             )
@@ -224,6 +226,7 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
                 mealsPerDay = mealsPerDay,
                 includeSnack = includeSnack,
                 mealStyle = mealStyle,
+                mealReuseCount = mealReuseCount,
                 onBackClick = { navController.popBackStack() },
                 onMealPlanGenerated = { plan, agentName ->
                     generatedMealPlan = plan
@@ -763,7 +766,7 @@ fun GenerateStep2Screen(
     hasIngredients: Boolean,
     userCalories: Int?,
     onBackClick: () -> Unit,
-    onNextClick: (ingredients: List<String>, excluded: List<String>, mealsPerDay: Int, includeSnack: Boolean, mealStyle: String) -> Unit
+    onNextClick: (ingredients: List<String>, excluded: List<String>, mealsPerDay: Int, includeSnack: Boolean, mealStyle: String, mealReuseCount: Int) -> Unit
 ) {
     val backgroundColor = Color(0xFFFCFCFA)
     val primaryGreen = Color(0xFF5A8754)
@@ -772,6 +775,7 @@ fun GenerateStep2Screen(
     var mealsPerDay by remember { mutableIntStateOf(3) }
     var includeSnack by remember { mutableStateOf(false) }
     val selectedStyles = remember { mutableStateListOf("골고루") }
+    var mealReuseCount by remember { mutableIntStateOf(1) }
     var autoDiversify by remember { mutableStateOf(true) } // ★ 아직 AI 생성 호출에는 반영되지 않는 UI 전용 옵션
 
     // 재료 입력 상태
@@ -793,7 +797,7 @@ fun GenerateStep2Screen(
         bottomBar = {
             Button(
                 onClick = {
-                    onNextClick(myIngredients.toList(), dislikedIngredients.toList(), mealsPerDay, includeSnack, selectedStyles.joinToString(", "))
+                    onNextClick(myIngredients.toList(), dislikedIngredients.toList(), mealsPerDay, includeSnack, selectedStyles.joinToString(", "), mealReuseCount)
                 },
                 enabled = isNextEnabled,
                 colors = ButtonDefaults.buttonColors(containerColor = primaryGreen, disabledContainerColor = Color(0xFFD6D6D6)),
@@ -968,6 +972,15 @@ fun GenerateStep2Screen(
                     Text("식단에 가벼운 간식 포함하기", fontSize = 14.sp, color = if (includeSnack) Color.Black else Color.Gray)
                 }
                 Spacer(modifier = Modifier.height(24.dp))
+                
+                Text("메인 요리 (국/반찬)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "1끼 추천(기본)", isSelected = mealReuseCount == 1, onClick = { mealReuseCount = 1 }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "2끼 추천", isSelected = mealReuseCount == 2, onClick = { mealReuseCount = 2 }, primaryColor = primaryGreen)
+                    SelectableOptionChip(modifier = Modifier.weight(1f), text = "3끼 추천", isSelected = mealReuseCount == 3, onClick = { mealReuseCount = 3 }, primaryColor = primaryGreen)
+                }
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Text("식단 구성 스타일 (중복 선택 가능)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                 Spacer(modifier = Modifier.height(12.dp))
@@ -1074,6 +1087,7 @@ fun GenerateStep3Screen(
     mealsPerDay: Int,
     includeSnack: Boolean,
     mealStyle: String,
+    mealReuseCount: Int,
     onBackClick: () -> Unit,
     onMealPlanGenerated: (WeeklyMealPlan, String) -> Unit
 ) {
@@ -1125,7 +1139,8 @@ fun GenerateStep3Screen(
                                         mealsPerDay = mealsPerDay,
                                         includeSnack = includeSnack,
                                         mealStyle = mealStyle,
-                                        allowedRecipes = allowedRecipes
+                                        allowedRecipes = allowedRecipes,
+                                        mealReuseCount = mealReuseCount
                                     )
 
                                     isGenerating = false
