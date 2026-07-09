@@ -62,7 +62,7 @@ import com.example.menu_recipe_app.ai.DailyMealPlan
 import com.example.menu_recipe_app.ai.Meal
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import com.example.menu_recipe_app.db.RecipeRepository
+import com.example.menu_recipe_app.db.RagRecipeRepository
 import com.example.menu_recipe_app.db.MealEntity
 import com.example.menu_recipe_app.viewmodel.DietViewModel
 import com.example.menu_recipe_app.viewmodel.DietViewModelFactory
@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
         // ==========================================
         lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(applicationContext)
-            val repository = RecipeRepository(applicationContext, db.recipeDao())
+            val repository = RagRecipeRepository(applicationContext, db.recipeDao())
             repository.seedDatabaseIfNeeded() // 앱 최초 실행 시 recipes.json 로드 및 임베딩 생성 (AI 추천용 RAG 검색 대상)
             Log.d("RAG_SYSTEM", "초기 데이터 시드 검사 완료")
         }
@@ -237,8 +237,7 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
         // AppNavigation 내부
         composable("calendar") {
             CalendarScreen(
-                navController = navController,
-                dietViewModel = dietViewModel // ★ 여기서 넘겨줌!
+                navController = navController
             )
         }
         composable("my") {
@@ -384,12 +383,11 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ★ selectedDate/plannedDates는 CalendarCard가 dietViewModel로 자체 조회
+            // ★ plannedDates(계획일 점 표시)는 CalendarCard가 mealPlanDao에서 자체 조회
             CalendarCard(
                 onNavigateToCalendar = onNavigateToCalendar,
                 selectedDate = selectedDate,
-                onDateSelected = { clickedDate -> dietViewModel.fetchMealsForDate(clickedDate) },
-                dietViewModel = dietViewModel
+                onDateSelected = { clickedDate -> dietViewModel.fetchMealsForDate(clickedDate) }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -438,26 +436,29 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
     // ==========================================
 // 캘린더 카드 컴포넌트 (DB 연동 버전)
 // ==========================================
-// 캘린더 카드 컴포넌트 (더보기 버튼 추가, dietViewModel로 월별 계획일 자동 조회)
+// 캘린더 카드 컴포넌트 (더보기 버튼 추가, mealPlanDao에서 계획일 직접 조회)
 // ==========================================
 @Composable
 fun CalendarCard(
     onNavigateToCalendar: () -> Unit,
     selectedDate: LocalDate = LocalDate.now(),
-    onDateSelected: (LocalDate) -> Unit = {},
-    dietViewModel: DietViewModel
+    onDateSelected: (LocalDate) -> Unit = {}
 ) {
     var currentMonth by remember(selectedDate) { mutableStateOf(YearMonth.from(selectedDate)) }
     val primaryGreen = Color(0xFF5A8754)
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-        LaunchedEffect(currentMonth) {
-            dietViewModel.fetchMealsForMonth(currentMonth)
-        }
-
-        val monthMeals by dietViewModel.currentMonthMeals.collectAsState()
-        val plannedDates = remember(monthMeals) {
-            monthMeals.map { LocalDate.parse(it.date) }.toSet()
-        }
+    // ★ AI가 실제로 식단을 저장하는 곳(mealPlanDao/MealPlanEntity)을 직접 조회.
+    // 이전에는 dietViewModel.currentMonthMeals(mealDao/MealEntity, AI 생성 플로우가 쓰지 않는 테이블)를
+    // 봐서 여기 점 표시와 캘린더 탭의 실제 식단 목록이 서로 다른 데이터를 근거로 삼아 불일치가 생겼음.
+    var plannedDates by remember { mutableStateOf<Set<LocalDate>>(emptySet()) }
+    LaunchedEffect(Unit) {
+        val db = com.example.menu_recipe_app.db.AppDatabase.getDatabase(context)
+        val datesStr = db.mealPlanDao().getAllMealPlanDates()
+        plannedDates = datesStr.mapNotNull {
+            try { LocalDate.parse(it) } catch (e: Exception) { null }
+        }.toSet()
+    }
 
         Card(colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(20.dp)) {
@@ -938,7 +939,7 @@ fun GenerateStep2Screen(
 
                                         // 2. RAG 검색 (DB에서 보유 재료로 레시피 검색)
                                         val db = AppDatabase.getDatabase(context)
-                                        val repository = RecipeRepository(context, db.recipeDao())
+                                        val repository = RagRecipeRepository(context, db.recipeDao())
                                         val allowedRecipes = repository.searchRecipesByIngredients(userIngredients, limit = 10)
 
                                         // 3. API 호출
@@ -1433,7 +1434,7 @@ fun GenerateStep3Screen(
                                 
                                 // 2. RAG 검색
                                 val db = AppDatabase.getDatabase(context)
-                                val repository = RecipeRepository(context, db.recipeDao())
+                                val repository = RagRecipeRepository(context, db.recipeDao())
                                 val allowedRecipes = repository.searchRecipesByIngredients(userIngredients, limit = 10)
 
                                 // 3. API 호출
@@ -1950,8 +1951,7 @@ fun SelectableOptionChip(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(
-    navController: androidx.navigation.NavController,
-    dietViewModel: DietViewModel // ★ CalendarCard가 요구하므로 파라미터로 받음
+    navController: androidx.navigation.NavController
 ) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
@@ -1991,8 +1991,7 @@ fun CalendarScreen(
             CalendarCard(
                 onNavigateToCalendar = {},
                 selectedDate = selectedDate,
-                onDateSelected = { selectedDate = it },
-                dietViewModel = dietViewModel
+                onDateSelected = { selectedDate = it }
             )
 
             Spacer(modifier = Modifier.height(32.dp))

@@ -20,11 +20,13 @@ data class RecipeJson(
     val embedding: List<Float>? = null
 )
 
-class RecipeRepository(
+// ★ recipe-caching의 repository.RecipeRepository(레시피 탭 조회용)와 이름이 겹쳐서
+// RagRecipeRepository로 리네이밍 - 이 클래스는 RAG 임베딩 시딩/검색 전용
+class RagRecipeRepository(
     private val context: Context,
     private val recipeDao: RecipeDao
 ) {
-    private val TAG = "RecipeRepository"
+    private val TAG = "RagRecipeRepository"
     
     // 임베딩 모델 인스턴스 (Gemini의 text-embedding-004 사용)
     private val embeddingModel = GenerativeModel(
