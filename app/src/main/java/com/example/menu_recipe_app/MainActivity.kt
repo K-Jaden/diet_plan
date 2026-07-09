@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity() {
                 // 인터넷이 끊겼거나 주소가 잘못되었을 때 에러 처리
                 Log.e("API_TEST", "데이터 불러오기 실패: ${e.message}")
             }
-        }
+    }
         // ==========================================
         setContent {
             var isDarkMode by remember { mutableStateOf(false) }
@@ -145,7 +145,7 @@ class MainActivity : ComponentActivity() {
                 // 3. Navigation에 ViewModel 넘겨주기
                 AppNavigation(dietViewModel = dietViewModel, isDarkMode = isDarkMode, onDarkModeChange = { isDarkMode = it })
             }
-        }
+    }
     }
 
 // ==========================================
@@ -352,7 +352,7 @@ fun StepIndicator(currentStep: Int) {
             if (index < steps.size - 1) {
                 HorizontalDivider(modifier = Modifier.width(24.dp).padding(horizontal = 4.dp).offset(y = (-8).dp), color = if (isCompleted) primaryGreen else grayColor, thickness = 1.dp)
             }
-        }
+    }
     }
 }
 
@@ -496,7 +496,7 @@ fun WeeklyGenerateCard(primaryColor: Color, onNavigate: () -> Unit) {
             Button(onClick = onNavigate, colors = ButtonDefaults.buttonColors(containerColor = primaryColor), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Text("생성하러 가기", modifier = Modifier.padding(vertical = 4.dp))
             }
-        }
+    }
     }
 }
 
@@ -587,25 +587,25 @@ fun CalendarCard(
                     }
                 }
             }
-        }
+    }
     }
 
 @Composable
 fun CalendarDayItem(date: LocalDate, isSelected: Boolean, hasPlan: Boolean = false, onClick: () -> Unit, primaryGreen: Color) {
     val hasRecord = false // 섭취 완료 표시는 나중을 위해 false 처리 (가짜 날짜%3 로직 제거)
 
-        Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
-                Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
-                if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
-                if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
+    Column(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(if (isSelected) primaryGreen.copy(alpha = 0.1f) else Color.Transparent).clickable { onClick() }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(modifier = Modifier.size(24.dp).background(if (isSelected) primaryGreen else Color.Transparent, CircleShape), contentAlignment = Alignment.Center) {
+            Text(text = date.dayOfMonth.toString(), fontSize = 14.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.White else Color.Black)
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+            if (hasPlan) Icon(Icons.Default.Restaurant, contentDescription = "계획", tint = primaryGreen, modifier = Modifier.size(10.dp))
+            if (hasPlan && hasRecord) Spacer(modifier = Modifier.width(2.dp))
+            if (hasRecord) Icon(Icons.Default.EmojiFoodBeverage, contentDescription = "기록", tint = Color(0xFF8D6E63), modifier = Modifier.size(10.dp))
                 if (!hasPlan && !hasRecord) Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(Color.LightGray))
             }
-        }
+    }
     }
 @Composable
 fun IngredientsCard() {
@@ -701,7 +701,7 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit)
             ) {
                 Text("다음 단계로", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(selectedOption != null) Color.White else Color.Gray)
             }
-        }
+    }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -722,7 +722,7 @@ fun GenerateStep1Screen(onBackClick: () -> Unit, onNextClick: (Boolean) -> Unit)
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 없음", description = "보유한 재료 없이\n식단을 추천받을래요.", isSelected = selectedOption == "없음", onClick = { selectedOption = "없음" }, primaryColor = primaryGreen)
                 SelectionCard(modifier = Modifier.weight(1f), title = "재료 있음", description = "가지고 있는 재료로\n식단을 추천받을래요.", isSelected = selectedOption == "있음", onClick = { selectedOption = "있음" }, primaryColor = primaryGreen)
             }
-        }
+    }
     }
 }
 
@@ -751,7 +751,7 @@ fun SelectionCard(modifier: Modifier, title: String, description: String, isSele
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(description, fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
             }
-        }
+    }
     }
 }
 // ==========================================
@@ -802,7 +802,7 @@ fun GenerateStep2Screen(
             ) {
                 Text("다음 단계로", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if(isNextEnabled) Color.White else Color.Gray)
             }
-        }
+    }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -1025,7 +1025,7 @@ fun GenerateStep2Screen(
                 }
                 Spacer(modifier = Modifier.height(40.dp))
             }
-        }
+    }
     }
 }
 
@@ -1160,7 +1160,7 @@ fun GenerateStep3Screen(
                     }
                 }
             }
-        }
+    }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -1205,7 +1205,7 @@ fun GenerateStep3Screen(
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
-        }
+    }
     }
 }
 
@@ -1310,7 +1310,7 @@ fun DailyDietCard(
                     }
                 }
             }
-        }
+    }
     }
 }
 
@@ -1321,7 +1321,7 @@ fun MealRow(mealType: String, primaryColor: Color, menu: String) {
         Spacer(modifier = Modifier.width(16.dp))
         Column {
             Text(mealType, color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(2.dp))
             Text(menu, fontSize = 14.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface, lineHeight = 20.sp)
         }
     }
@@ -1398,8 +1398,8 @@ fun GenerateStep4Screen(
                                                     date = dateStr, dayName = dailyPlan.dayName,
                                                     agentType = agentName, mealType = mealType,
                                                     menuName = meal.menuName, ingredients = Json.encodeToString(meal.ingredients),
-                                                    calories = meal.calories, recipe = meal.recipe,
-                                                    totalDayCalories = dailyPlan.totalCalories
+                                                    calories = meal.calories.toInt(), recipe = meal.recipe,
+                                                    totalDayCalories = dailyPlan.totalCalories.toInt()
                                                 )
                                             }
                                             if (dailyPlan.breakfast.menuName != "없음") entities.add(createEntity("breakfast", dailyPlan.breakfast))
@@ -1456,7 +1456,7 @@ fun GenerateStep4Screen(
                     }
                 }
             }
-        }
+    }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -1501,7 +1501,7 @@ fun GenerateStep4Screen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
-        }
+    }
     }
 
     if (showRegenDialog) {
@@ -1620,7 +1620,7 @@ fun GenerateStep5Screen(onBackClick: () -> Unit, onGoMainClick: () -> Unit, onEd
                     Text("식단 수정하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
-        }
+    }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -1677,7 +1677,7 @@ fun AgentFinalSummaryCard(primaryColor: Color) {
                     Text("5일 식단 저장됨", fontSize = 12.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
                 }
             }
-        }
+    }
     }
 }
 
@@ -1864,7 +1864,7 @@ fun MealDetailScreen(mealId: Int, onBackClick: () -> Unit) {
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
-        }
+    }
     }
 }
 
@@ -2022,7 +2022,7 @@ fun CalendarScreen(
                     }
                 }
             }
-        }
+    }
     }
 }
 @Composable
@@ -2203,7 +2203,7 @@ fun MyPageScreen(
                     MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = {}, isDanger = true)
                 }
             }
-        }
+    }
     }
 
     // 신체 정보 입력 다이얼로그

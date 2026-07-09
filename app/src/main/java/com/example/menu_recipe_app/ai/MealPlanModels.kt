@@ -21,7 +21,7 @@ data class DailyMealPlan(
     val lunch: Meal,
     val dinner: Meal,
     val snack: Meal? = null,     // 선택적 간식 (null 허용)
-    val totalCalories: Int
+    val totalCalories: Double
 )
 
 // 한 끼니
@@ -29,6 +29,6 @@ data class DailyMealPlan(
 data class Meal(
     val menuName: String,                // "김치찌개"
     val ingredients: List<String>,       // ["김치", "돼지고기", "두부"]
-    val calories: Int,                   // 350
+    val calories: Double,                // 350.0
     val recipe: String                   // "1. 김치를 볶는다. 2. 물을 넣고 끓인다..."
 )
