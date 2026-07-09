@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-07-09: origin/develop 재머지 - 4단계→5단계 생성 플로우 전환, AI 로직 재배치
+**문제**: `origin/develop`에 식단 생성 플로우가 4단계에서 5단계(재료선택→기본설정→영양사선택→식단확인→완료)로 재설계된 커밋이 새로 올라왔는데, `MainActivity.kt` 한 파일에서 12개 충돌이 발생. 단순 텍스트 병합이 불가능한 이유는 develop의 새 Step2/Step3가 UI만 있고 실제 동작이 없는 뼈대였기 때문 — 재료 입력, 끼니 수, 간식 여부, 식단 스타일을 입력받는 화면(새 Step2)과 영양사를 고르는 화면(새 Step3)이 서로 상태를 주고받지 않았고, 실제 `GeminiService`/RAG 검색 호출은 어디에도 연결되어 있지 않았음.
+
+또한 조사 중 기존 코드의 잠재 버그를 하나 발견: `AppNavigation`의 `userIngredients`/`userExcludedIngredients` state가 선언만 되고 어디서도 재할당되지 않아, 실제 AI 생성 호출이 항상 빈 재료 목록을 받고 있었음(화면상으로는 드러나지 않는 조용한 버그).
+
+**시도한 것**: 처음엔 `git merge origin/develop --no-edit`로 바로 충돌 해결을 시도했으나, 4단계 구조를 유지할지 5단계로 갈아탈지는 코드만 봐서는 판단할 수 없는 제품 방향 결정이라 `git merge --abort`로 안전하게 되돌리고 사용자에게 확인.
+
+**해결**: 사용자가 "5단계 채택, AI 로직 재배치"를 선택. develop의 새 Step2(재료/기피재료/끼니설정 UI)·Step3(영양사 카드 UI)·Step5(완료 화면)를 그대로 채택하되, 기존 feat/agents의 Step2에 있던 실제 생성 로직(티켓 차감, `RagRecipeRepository` RAG 검색, `GeminiService().generateMealPlan()` 호출)을 새 Step3로 옮기고, 기존 Step3(리뷰/재생성/저장 로직)는 새 Step4로 이름만 바꿔 그대로 이식. `AppNavigation`에 `userIngredients`/`mealsPerDay`/`includeSnack`/`mealStyle` state를 추가해 새 Step2 → Step3로 실제 값이 흐르도록 배선하면서 위에서 발견한 빈 재료 목록 버그도 함께 해소. 충돌 범위가 방대해(약 1200줄) `Edit` 도구로 개별 처리하는 대신, 충돌 없는 앞/뒤 구간(716줄까지, 1941줄부터)을 안전 경계로 확정하고 그 사이를 통째로 새로 작성한 내용으로 교체하는 방식을 사용. 이 과정에서 develop 쪽에만 있던 죽은 코드(`ChefBriefingCard`/`HintChip`/`ChefBriefing`)와 중복 정의된 `AgentSummaryCard`(develop 버전은 에이전트 이름이 하드코딩되어 있어 우리 쪽 동적 버전을 채택)도 함께 정리.
+**결과**: `./gradlew compileDebugKotlin` 1회 시도로 컴파일 성공. 5단계 플로우 전체가 실제 AI 생성 로직과 연결된 상태로 병합 완료.
+
+---
+
 ## 2026-07-03 (회고 작성): AI 응답 할루시네이션 → 하이브리드 RAG 도입
 **문제**: Gemini 기반 AI 에이전트가 실제로 존재하지 않는 레시피/메뉴를 만들어내는 할루시네이션 발생
 **시도한 것**: 프롬프트 제약만으로 막아보려 했으나 근본적으로 해결되지 않음
