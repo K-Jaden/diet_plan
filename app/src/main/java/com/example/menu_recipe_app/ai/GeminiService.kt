@@ -214,6 +214,9 @@ class GeminiService {
         // 추가 요청사항
         if (additionalRequest.isNotBlank()) {
             sb.appendLine("【추가 요청사항】$additionalRequest")
+            sb.appendLine("★ 최우선 규칙: 위 추가 요청사항을 1순위로 반영해야 합니다.")
+            sb.appendLine("★ 만약 추가 요청사항(예: 면 요리 추가)이 기존 '보유 재료'나 '제공된 레시피 카탈로그'의 제약과 충돌하더라도, 융통성을 발휘하여(임의로 레시피를 창작해서라도) 무조건 추가 요청사항을 만족시키는 식단을 짜주세요.")
+            sb.appendLine("★ 단, 어떠한 딜레마 상황이 오더라도 절대로 사과문이나 일반 텍스트를 출력하지 마시고, 반드시 아래 지정된 JSON 스키마 형식만을 완벽하게 준수해서 출력하세요.")
             sb.appendLine()
         }
 
