@@ -12,19 +12,21 @@ import kotlinx.coroutines.launch
 @Database(
     entities = [
         RecipeEntity::class,
-        MealEntity::class,
+        MealPlanEntity::class,
         IngredientEntity::class,
         UserProfileEntity::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun recipeDao(): RecipeDao
-    abstract fun mealDao(): MealDao
     abstract fun ingredientDao(): IngredientDao
     abstract fun userProfileDao(): UserProfileDao
+
+    // AI 식단 DAO
+    abstract fun mealPlanDao(): MealPlanDao
 
     companion object {
         @Volatile

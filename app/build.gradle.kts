@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp") version "2.2.10-2.0.2"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
 }
 
 android {
@@ -32,9 +33,13 @@ android {
         }
 
         val apiKey = properties.getProperty("RECIPE_API_KEY") ?: "키_없음"
+        val geminiApiKey = properties.getProperty("GEMINI_API_KEY") ?: ""
+        val publicDataApiKey = properties.getProperty("PUBLIC_DATA_API_KEY") ?: ""
 
         // 주의: String 값은 양옆에 쌍따옴표(\")가 들어가야 제대로 인식됩니다!
         buildConfigField("String", "RECIPE_API_KEY", "\"$apiKey\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+        buildConfigField("String", "PUBLIC_DATA_API_KEY", "\"$publicDataApiKey\"")
     }
 
     buildTypes {
@@ -80,7 +85,13 @@ dependencies {
     // Retrofit & Gson (네트워크 통신용)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     
+    // Gemini AI SDK
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+    // JSON Parsing
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
     // 크롤링 및 뷰모델 구성
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
