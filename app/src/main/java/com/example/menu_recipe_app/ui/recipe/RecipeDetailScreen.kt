@@ -174,11 +174,13 @@ private fun RecipeDetailContent(
                         else line to ""
 
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Text(name, fontSize = 15.sp, color = Color.DarkGray)
-                            Text(amount, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text(name, fontSize = 15.sp, color = Color.DarkGray, modifier = Modifier.weight(1f))
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(amount, fontSize = 15.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                         }
                         if (index < ingredientList.lastIndex) {
                             HorizontalDivider(
