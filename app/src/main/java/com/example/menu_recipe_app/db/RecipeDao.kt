@@ -4,33 +4,57 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.example.menu_recipe_app.db.RecipeEntity
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * ★ 통합판 DAO (B의 기존 버전 + 팀원 feat/recipeDB의 추가분 + API 프리로드용 신규)
+ */
 @Dao
 interface RecipeDao {
 
-    // 1. 레시피 저장 (이미 같은 ID가 있다면 덮어쓰기)
+    // ===== 기본 CRUD =====
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecipe(recipe: RecipeEntity)
 
-    // 2. 이름으로 특정 레시피 하나만 찾기
+    /** [신규] API 프리로드용 대량 저장 (100개씩 청크 저장) */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecipes(recipes: List<RecipeEntity>)
+
     @Query("SELECT * FROM recipe_table WHERE menuName = :name LIMIT 1")
     suspend fun getRecipeByName(name: String): RecipeEntity?
 
-    // 3. 저장된 모든 레시피 다 가져오기
+    /** [팀원 추가분 반영] 특정 ID의 레시피 1개 */
+    @Query("SELECT * FROM recipe_table WHERE id = :id")
+    suspend fun getRecipeById(id: Int): RecipeEntity?
+
     @Query("SELECT * FROM recipe_table ORDER BY id DESC")
     suspend fun getAllRecipes(): List<RecipeEntity>
 
-    // 4. 레시피 삭제하기
     @Query("DELETE FROM recipe_table WHERE id = :recipeId")
     suspend fun deleteRecipe(recipeId: Int)
-    // RecipeDao.kt 파일 내부
 
-    @Query("SELECT * FROM recipe_table WHERE id = :id")
-    suspend fun getRecipeById(id: Int): RecipeEntity // 특정 ID의 레시피 1개만 가져오기
+    /** [신규] 프리로드 필요 여부 판단용 (0개면 최초 실행) */
+    @Query("SELECT COUNT(*) FROM recipe_table")
+    suspend fun getRecipeCount(): Int
 
-    // ★ 요리 이름 또는 재료에 검색어가 포함된 레시피 찾기
-    @Query("SELECT * FROM recipe_table WHERE menuName LIKE '%' || :searchQuery || '%' OR ingredients LIKE '%' || :searchQuery || '%'")
-    suspend fun searchRecipes(searchQuery: String): List<RecipeEntity>
+    // ===== 레시피 탭용 Flow 쿼리 (DB 변경 시 UI 자동 갱신) =====
+
+    @Query("SELECT * FROM recipe_table ORDER BY id DESC")
+    fun observeAllRecipes(): Flow<List<RecipeEntity>>
+
+
+    //즐겨찾기
+    @Query("UPDATE recipe_table SET isFavorite = :fav WHERE id = :id")
+    suspend fun setFavorite(id: Int, fav: Boolean)
+
+
+
+    /** 실시간 검색: 이름 OR 재료 (팀원 의도 반영) */
+    @Query(
+        "SELECT * FROM recipe_table " +
+                "WHERE menuName LIKE '%' || :query || '%' OR ingredients LIKE '%' || :query || '%' " +
+                "ORDER BY menuName"
+    )
+    fun searchRecipes(query: String): Flow<List<RecipeEntity>>
 }
