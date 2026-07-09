@@ -119,9 +119,22 @@ class GeminiService {
         // AI가 마크다운(```json)을 붙이거나 끝에 여분의 }를 붙이는 오류를 방어하기 위한 정제 로직
         var cleanText = responseText.trim()
         val startIndex = cleanText.indexOf('{')
-        val endIndex = cleanText.lastIndexOf('}')
-        if (startIndex in 0..endIndex) {
-            cleanText = cleanText.substring(startIndex, endIndex + 1)
+        if (startIndex != -1) {
+            var depth = 0
+            var validEndIndex = -1
+            for (i in startIndex until cleanText.length) {
+                if (cleanText[i] == '{') depth++
+                else if (cleanText[i] == '}') {
+                    depth--
+                    if (depth == 0) {
+                        validEndIndex = i
+                        break
+                    }
+                }
+            }
+            if (validEndIndex != -1) {
+                cleanText = cleanText.substring(startIndex, validEndIndex + 1)
+            }
         }
 
         // JSON → WeeklyMealPlan 파싱
