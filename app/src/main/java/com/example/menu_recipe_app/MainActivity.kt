@@ -35,6 +35,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.menu_recipe_app.ui.recipe.RecipeScreen
+import com.example.menu_recipe_app.ui.recipe.RecipeDetailScreen
+import com.example.menu_recipe_app.ui.recipe.RecipeViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -215,22 +218,18 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
         composable("recipe") {
             RecipeScreen(
                 navController = navController,
-                // ★ 여기서 받은 menuName을 상세 화면 경로로 넘겨줍니다.
-                onNavigateToDetail = { menuName -> navController.navigate("recipe_detail/$menuName") }
+                onNavigateToDetail = { menuName -> 
+                    navController.navigate("recipe_detail/$menuName") 
+                },
+                bottomBar = { BottomNavigationBar(navController, "recipe") }
             )
         }
-        composable(
-            route = "recipe_detail/{menuName}", // 파라미터 경로 등록
-            arguments = listOf(navArgument("menuName") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val menuName = backStackEntry.arguments?.getString("menuName") ?: "알 수 없는 요리"
-            RecipeDetailScreen(
-                menuName = menuName,
-                viewModel = dietViewModel, // ★ 뷰모델 파라미터 전달!
-                onBackClick = { navController.popBackStack() }
-            )
+        
+        composable("recipe_detail/{menuName}") { backStackEntry ->
+            val menuName = backStackEntry.arguments?.getString("menuName") ?: ""
+            RecipeDetailScreen(menuName = menuName, onBackClick = { navController.popBackStack() })
         }
-        // AppNavigation 내부
+        
         composable("calendar") {
             CalendarScreen(
                 navController = navController,
@@ -1494,234 +1493,7 @@ data class SimpleRecipe(
 // ==========================================
 // ★ 수정된 화면: 레시피 메인 탭 (DB 연동 완료)
 // ==========================================
-// ==========================================
-// ★ 완벽하게 중괄호 짝을 맞춘 RecipeScreen 완성본
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecipeScreen(navController: androidx.navigation.NavController, onNavigateToDetail: (String) -> Unit) {
-    val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-
-    var searchQuery by remember { mutableStateOf("") }
-    var recipeList by remember { mutableStateOf<List<RecipeEntity>>(emptyList()) }
-
-    fun performSearch(query: String) {
-        lifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(context)
-            val results = if (query.isBlank()) {
-                db.recipeDao().getAllRecipes() // 검색어가 비어있으면 전체 레시피 보여주기
-            } else {
-                db.recipeDao().searchRecipes(query)
-            }
-            withContext(Dispatchers.Main) {
-                recipeList = results
-            }
-        }
-    }
-
-    // 화면 진입 시 처음에 전체 리스트를 한 번 불러옵니다.
-    LaunchedEffect(Unit) {
-        performSearch("")
-    }
-
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { Text("레시피", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = backgroundColor)
-            )
-        },
-        bottomBar = { BottomNavigationBar(navController, "recipe") }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { newText ->
-                    searchQuery = newText
-                    performSearch(newText)
-                },
-                placeholder = { Text("어떤 요리를 만들어볼까요?", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = "검색",
-                        tint = Color.Gray
-                    )
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                    focusedContainerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                    unfocusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
-                ),
-                shape = RoundedCornerShape(16.dp),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (searchQuery.isNotBlank() && recipeList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("'$searchQuery'에 대한 검색 결과가 없습니다.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(recipeList.size) { index ->
-                        val recipe = recipeList[index]
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.clickable { onNavigateToDetail(recipe.menuName) }
-                        ) {
-                            AsyncImage(
-                                model = recipe.imageUrl,
-                                contentDescription = recipe.menuName,
-                                modifier = Modifier.size(90.dp).clip(CircleShape)
-                                    .background(Color(0xFFF0F0F0)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                recipe.menuName,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ==========================================
-// ★ 새로운 화면: 레시피 상세 화면
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RecipeDetailScreen(menuName: String, viewModel: DietViewModel, onBackClick: () -> Unit) {
-    val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
-    val primaryGreen = Color(0xFF5A8754)
-
-    // ★ 화면이 열릴 때 뷰모델에게 레시피 정보를 찾아오라고 명령
-    LaunchedEffect(menuName) {
-        viewModel.fetchRecipeByName(menuName)
-    }
-
-    // ★ DB에서 찾은 레시피 데이터를 관찰
-    val recipe by viewModel.selectedRecipe.collectAsState()
-
-    Scaffold(
-        containerColor = backgroundColor,
-        topBar = {
-            TopAppBar(
-                title = { },
-                navigationIcon = { IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBackIosNew, contentDescription = "뒤로가기") } },
-                actions = { IconButton(onClick = { }) { Icon(Icons.Default.BookmarkBorder, contentDescription = "저장") } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
-
-            // 데이터 로딩 중이거나 없을 때
-            if (recipe == null) {
-                Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color(0xFFF0F0F0)), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = primaryGreen)
-                }
-            } else {
-                // 1. 진짜 사진 뿌려주기
-                AsyncImage(
-                    model = recipe!!.imageUrl,
-                    contentDescription = recipe!!.menuName,
-                    modifier = Modifier.fillMaxWidth().height(250.dp),
-                    contentScale = ContentScale.Crop
-                )
-
-                Column(modifier = Modifier.padding(20.dp)) {
-                    // 2. 진짜 이름 뿌려주기
-                    Text(text = recipe!!.menuName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Timer, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("20분", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("350 kcal", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp) // 시간/칼로리는 추후 확장 가능
-                    }
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    // 3. 진짜 재료 파싱해서 뿌려주기
-                    Text("필요한 재료", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Card(colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            // "차돌박이 150g, 두부 반 모" -> 쉼표로 분리
-                            val ingredientsList = recipe!!.ingredients.split(",")
-                            ingredientsList.forEachIndexed { index, item ->
-                                val parts = item.trim().split(" ") // "차돌박이"와 "150g" 분리
-                                val name = if (parts.size > 1) parts.dropLast(1).joinToString(" ") else item.trim()
-                                val amount = if (parts.size > 1) parts.last() else ""
-
-                                RecipeIngredientRow(name, amount)
-
-                                if (index < ingredientsList.size - 1) {
-                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    // 4. 진짜 조리 순서 파싱해서 뿌려주기
-                    Text("조리 순서", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // "\n" 단위로 분리해서 줄마다 표시
-                    val stepsList = recipe!!.instructions.split("\n")
-                    stepsList.forEachIndexed { index, step ->
-                        // "1. 냄비에..." 처럼 앞에 붙은 숫자와 점을 지워줌 (UI에서 예쁘게 숫자 박스를 그려주니까)
-                        val cleanStep = step.replace(Regex("^[0-9]+\\.\\s*"), "").trim()
-                        if (cleanStep.isNotBlank()) {
-                            RecipeStepRow((index + 1).toString(), cleanStep, primaryGreen)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(40.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun RecipeIngredientRow(name: String, amount: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(name, fontSize = 15.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface)
-        Text(amount, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-fun RecipeStepRow(stepNum: String, instruction: String, primaryColor: Color) {
-    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp), verticalAlignment = Alignment.Top) {
-        Box(modifier = Modifier.size(24.dp).background(primaryColor, CircleShape).padding(top = 2.dp), contentAlignment = Alignment.Center) {
-            Text(stepNum, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(instruction, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 2.dp))
-    }
-}@Composable
 fun SelectableOptionChip(
     modifier: Modifier = Modifier,
     text: String,

@@ -80,4 +80,8 @@ dependencies {
     // Retrofit & Gson (네트워크 통신용)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    
+    // 크롤링 및 뷰모델 구성
+    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 }
