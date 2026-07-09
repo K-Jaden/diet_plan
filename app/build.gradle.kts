@@ -89,4 +89,8 @@ dependencies {
 
     // ★ JSON 파싱 (kotlinx.serialization)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // ★ 레시피 크롤링(만개의레시피) & ViewModel Compose 통합 (feat/recipe-caching)
+    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 }

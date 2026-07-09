@@ -126,7 +126,7 @@ class RecipeRepository(
                     ingredients = recipe.ingredients,
                     instructions = recipe.instructions,
                     imageUrl = null,
-                    calories = recipe.calories,
+                    calories = recipe.calories.toString(),
                     embedding = embeddingJson
                 )
                 recipeDao.insertRecipe(entity)
@@ -251,8 +251,7 @@ class RecipeRepository(
                 val menuName = row.rcpNm ?: "이름 없음"
                 val ingredients = row.rcpPartsDtls ?: "재료 정보 없음"
                 val instructions = row.getInstructions()
-                val caloriesStr = row.infoEng ?: "0"
-                val calories = caloriesStr.replace(Regex("[^0-9]"), "").toIntOrNull()
+                val caloriesStr = row.infoEng
 
                 // 임베딩 텍스트 생성
                 val textToEmbed = "요리 이름: ${menuName}\n재료: $ingredients\n조리법: $instructions"
@@ -269,7 +268,7 @@ class RecipeRepository(
                     ingredients = ingredients,
                     instructions = instructions,
                     imageUrl = row.attFileNoMain,
-                    calories = calories,
+                    calories = caloriesStr,
                     embedding = embeddingJson
                 )
                 recipeDao.insertRecipe(entity)
