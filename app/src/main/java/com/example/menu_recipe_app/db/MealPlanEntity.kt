@@ -20,5 +20,6 @@ data class MealPlanEntity(
     val ingredients: String,      // JSON 문자열: "[\"김치\",\"돼지고기\",\"두부\"]"
     val calories: Int,            // 350
     val recipe: String,           // "1. 김치를 볶는다. 2. 물을 넣고 끓인다..."
-    val totalDayCalories: Int     // 하루 총 칼로리
+    val totalDayCalories: Int,    // 하루 총 칼로리
+    val isEaten: Boolean = false  // 실제 섭취 여부 (UI 체크박스용, MealEntity에서 이관)
 )

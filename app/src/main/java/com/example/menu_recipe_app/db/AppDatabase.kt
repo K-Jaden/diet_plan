@@ -9,23 +9,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// ★ develop의 식단/재료/프로필 엔티티 + feat/agents의 MealPlanEntity + recipe-caching의
-// RecipeEntity 스키마 변경(calories: String)을 모두 합치며 버전 5로 업그레이드
+// ★ MealEntity/MealDao(develop이 만든 별도 식단 기록 테이블)를 MealPlanEntity로 통합.
+// AI 생성 플로우가 실제로 쓰는 테이블이 하나뿐이 되도록 정리하며 버전 6으로 업그레이드
 @Database(
     entities = [
         RecipeEntity::class,
         MealPlanEntity::class,
-        MealEntity::class,
         IngredientEntity::class,
         UserProfileEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun recipeDao(): RecipeDao
-    abstract fun mealDao(): MealDao
     abstract fun ingredientDao(): IngredientDao
     abstract fun userProfileDao(): UserProfileDao
 

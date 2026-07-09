@@ -63,7 +63,6 @@ import com.example.menu_recipe_app.ai.Meal
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.example.menu_recipe_app.db.RagRecipeRepository
-import com.example.menu_recipe_app.db.MealEntity
 import com.example.menu_recipe_app.viewmodel.DietViewModel
 import com.example.menu_recipe_app.viewmodel.DietViewModelFactory
 import androidx.compose.runtime.getValue
@@ -95,13 +94,13 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = colorScheme) {
                 // 1. DB와 Dao 가져오기
                 val db = AppDatabase.getDatabase(applicationContext)
-                val mealDao = db.mealDao()
+                val mealPlanDao = db.mealPlanDao()
                 val userProfileDao = db.userProfileDao()
                 val recipeDao = db.recipeDao() // ★ 추가
 
                 // 2. ViewModel 생성하기
                 val dietViewModel: DietViewModel = viewModel(
-                    factory = DietViewModelFactory(mealDao, userProfileDao, recipeDao) // ★ 레시피 DAO 넣기
+                    factory = DietViewModelFactory(mealPlanDao, userProfileDao, recipeDao) // ★ 레시피 DAO 넣기
                 )
 
                 // 3. Navigation에 ViewModel 넘겨주기

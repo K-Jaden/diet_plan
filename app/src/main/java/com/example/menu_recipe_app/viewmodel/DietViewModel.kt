@@ -3,8 +3,8 @@ package com.example.menu_recipe_app.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.menu_recipe_app.db.MealDao
-import com.example.menu_recipe_app.db.MealEntity
+import com.example.menu_recipe_app.db.MealPlanDao
+import com.example.menu_recipe_app.db.MealPlanEntity
 import com.example.menu_recipe_app.db.RecipeDao
 import com.example.menu_recipe_app.db.RecipeEntity
 import com.example.menu_recipe_app.db.UserProfileDao
@@ -18,19 +18,19 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 class DietViewModel(
-    private val mealDao: MealDao,
+    private val mealPlanDao: MealPlanDao,
     private val userProfileDao: UserProfileDao,
     private val recipeDao: RecipeDao
 ) : ViewModel() {
 
-    private val _selectedDateMeals = MutableStateFlow<List<MealEntity>>(emptyList())
-    val selectedDateMeals: StateFlow<List<MealEntity>> = _selectedDateMeals.asStateFlow()
+    private val _selectedDateMeals = MutableStateFlow<List<MealPlanEntity>>(emptyList())
+    val selectedDateMeals: StateFlow<List<MealPlanEntity>> = _selectedDateMeals.asStateFlow()
 
     private val _currentSelectedDate = MutableStateFlow(LocalDate.now())
     val currentSelectedDate: StateFlow<LocalDate> = _currentSelectedDate.asStateFlow()
 
-    private val _currentMonthMeals = MutableStateFlow<List<MealEntity>>(emptyList())
-    val currentMonthMeals: StateFlow<List<MealEntity>> = _currentMonthMeals.asStateFlow()
+    private val _currentMonthMeals = MutableStateFlow<List<MealPlanEntity>>(emptyList())
+    val currentMonthMeals: StateFlow<List<MealPlanEntity>> = _currentMonthMeals.asStateFlow()
 
     private val _userProfile = MutableStateFlow<UserProfileEntity?>(null)
     val userProfile: StateFlow<UserProfileEntity?> = _userProfile.asStateFlow()
@@ -75,7 +75,7 @@ class DietViewModel(
     fun fetchMealsForDate(date: LocalDate) {
         _currentSelectedDate.value = date
         viewModelScope.launch {
-            mealDao.getMealsByDate(date.toString()).collect { meals ->
+            mealPlanDao.observeMealsByDate(date.toString()).collect { meals ->
                 _selectedDateMeals.value = meals
             }
         }
@@ -86,30 +86,22 @@ class DietViewModel(
         val endDate = yearMonth.atEndOfMonth().toString()
 
         viewModelScope.launch {
-            mealDao.getMealsBetweenDates(startDate, endDate).collect { meals ->
+            mealPlanDao.observeMealsBetweenDates(startDate, endDate).collect { meals ->
                 _currentMonthMeals.value = meals
             }
-        }
-    }
-
-    fun saveGeneratedMeals(meals: List<MealEntity>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            mealDao.insertMeals(meals)
-            fetchMealsForDate(_currentSelectedDate.value)
-            fetchMealsForMonth(YearMonth.from(_currentSelectedDate.value))
         }
     }
 }
 
 class DietViewModelFactory(
-    private val mealDao: MealDao,
+    private val mealPlanDao: MealPlanDao,
     private val userProfileDao: UserProfileDao,
     private val recipeDao: RecipeDao
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DietViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return DietViewModel(mealDao, userProfileDao, recipeDao) as T
+            return DietViewModel(mealPlanDao, userProfileDao, recipeDao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

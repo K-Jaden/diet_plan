@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 /**
  * 식단 데이터 CRUD를 담당하는 DAO
@@ -22,6 +23,16 @@ interface MealPlanDao {
     // 특정 날짜의 식단 가져오기
     @Query("SELECT * FROM meal_plan_table WHERE date = :date ORDER BY id")
     suspend fun getMealsByDate(date: String): List<MealPlanEntity>
+
+    // ===== 반응형(Flow) 쿼리 — MealDao/MealEntity 통합분. DB 변경 시 UI 자동 갱신용 =====
+
+    // 특정 날짜의 식단 관찰 (DietViewModel.fetchMealsForDate에서 사용)
+    @Query("SELECT * FROM meal_plan_table WHERE date = :date ORDER BY id")
+    fun observeMealsByDate(date: String): Flow<List<MealPlanEntity>>
+
+    // 날짜 범위의 식단 관찰 (DietViewModel.fetchMealsForMonth에서 사용, 캘린더 점 찍기용)
+    @Query("SELECT * FROM meal_plan_table WHERE date BETWEEN :startDate AND :endDate ORDER BY date, id")
+    fun observeMealsBetweenDates(startDate: String, endDate: String): Flow<List<MealPlanEntity>>
 
     // 날짜 범위로 식단 가져오기 (7일치 조회용)
     @Query("SELECT * FROM meal_plan_table WHERE date BETWEEN :startDate AND :endDate ORDER BY date, id")
