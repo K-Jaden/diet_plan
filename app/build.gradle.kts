@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.android.application)
@@ -24,11 +25,15 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // ★ API 키들을 BuildConfig에 주입
+        // ★ API 키들을 BuildConfig에 주입 (local.properties 없어도 빌드가 죽지 않도록 존재 체크)
         val properties = Properties()
-        properties.load(project.rootProject.file("local.properties").inputStream())
-        buildConfigField("String", "GEMINI_API_KEY", "\"${properties["GEMINI_API_KEY"]}\"")
-        buildConfigField("String", "PUBLIC_DATA_API_KEY", "\"${properties["PUBLIC_DATA_API_KEY"] ?: ""}\"")
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            properties.load(FileInputStream(localPropertiesFile))
+        }
+        buildConfigField("String", "GEMINI_API_KEY", "\"${properties.getProperty("GEMINI_API_KEY") ?: ""}\"")
+        buildConfigField("String", "PUBLIC_DATA_API_KEY", "\"${properties.getProperty("PUBLIC_DATA_API_KEY") ?: ""}\"")
+        buildConfigField("String", "RECIPE_API_KEY", "\"${properties.getProperty("RECIPE_API_KEY") ?: ""}\"")
     }
 
     buildTypes {
@@ -72,7 +77,7 @@ dependencies {
     val room_version = "2.8.4"
     implementation("androidx.room:room-runtime:$room_version")
     ksp("androidx.room:room-compiler:$room_version")
-    implementation("androidx.room:room-ktx:$room_version")
+    implementation("androidx.room:room-ktx:$room_version") // 코루틴(비동기) 지원
 
     // Retrofit & OkHttp
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
