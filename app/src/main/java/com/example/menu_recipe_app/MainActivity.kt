@@ -158,8 +158,9 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
 
     // ★ 기존에 잘 만들어두신 전역 상태 관리 그대로 유지!
     var ticketCount by remember { mutableIntStateOf(5) }
-    var isLoggedIn by remember { mutableStateOf(false) }
+    var loggedInUser by remember { mutableStateOf<com.example.menu_recipe_app.db.UserEntity?>(null) }
     var userCalories by remember { mutableStateOf<Int?>(null) }
+    val isLoggedIn = loggedInUser != null
 
     // ★ AI 생성 식단 공유 상태 (Step2 → Step3 데이터 전달용)
     var generatedMealPlan by remember { mutableStateOf<WeeklyMealPlan?>(null) }
@@ -181,7 +182,10 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
                 dietViewModel = dietViewModel, // ★ 2. MainScreen으로 ViewModel 전달
                 ticketCount = ticketCount,
                 onTicketAdd = { added -> ticketCount += added },
-                onNavigateToGenerate = { navController.navigate("generate_step1") },
+                onNavigateToGenerate = { 
+                    if (isLoggedIn) navController.navigate("generate_step1")
+                    else navController.navigate("login")
+                },
                 onNavigateToCalendar = { navController.navigate("calendar") }
 
             )
@@ -300,20 +304,34 @@ fun AppNavigation(dietViewModel: DietViewModel, isDarkMode: Boolean = false, onD
                 navController = navController
             )
         }
+        composable("login") {
+            LoginScreen(
+                navController = navController,
+                onLoginSuccess = { user -> 
+                    loggedInUser = user
+                    userCalories = user.recommendedCalories.takeIf { it > 0 }
+                    navController.popBackStack() 
+                }
+            )
+        }
+        composable("signup") {
+            SignUpScreen(navController = navController)
+        }
         composable("my") {
             MyPageScreen(
-                navController = navController,
-                isLoggedIn = isLoggedIn,
-                ticketCount = ticketCount,
+                navController = navController, 
+                loggedInUser = loggedInUser,
+                ticketCount = ticketCount, 
                 userCalories = userCalories, // ★ 마이페이지로 칼로리 전달
                 isDarkMode = isDarkMode,
                 onDarkModeChange = onDarkModeChange,
-                onLoginClick = { isLoggedIn = true },
-                onLogoutClick = {
-                    isLoggedIn = false
+                onLoginClick = { navController.navigate("login") }, 
+                onLogoutClick = { 
+                    loggedInUser = null 
                     userCalories = null // 로그아웃 시 칼로리 정보 초기화
-                },
-                onCaloriesCalculated = { calculated -> userCalories = calculated } // ★ 계산 완료 시 상태 업데이트
+                }, 
+                onCaloriesCalculated = { calculated -> userCalories = calculated }, // ★ 계산 완료 시 상태 업데이트
+                onUserUpdated = { updated -> loggedInUser = updated }
             )
         }
     }
@@ -1926,20 +1944,27 @@ fun TicketPackageCard(title: String, price: String, description: String, iconCol
 @Composable
 fun MyPageScreen(
     navController: androidx.navigation.NavController,
-    isLoggedIn: Boolean,
+    loggedInUser: com.example.menu_recipe_app.db.UserEntity?,
     ticketCount: Int,
     userCalories: Int?,
     isDarkMode: Boolean,
     onDarkModeChange: (Boolean) -> Unit,
     onLoginClick: () -> Unit,
     onLogoutClick: () -> Unit,
-    onCaloriesCalculated: (Int) -> Unit
+    onCaloriesCalculated: (Int) -> Unit,
+    onUserUpdated: (com.example.menu_recipe_app.db.UserEntity) -> Unit
 ) {
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val primaryGreen = Color(0xFF5A8754)
 
     // 신체 정보 입력 팝업 상태
     var showBodyInfoDialog by remember { mutableStateOf(false) }
+    
+    // 회원 탈퇴 팝업 상태
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         containerColor = backgroundColor,
@@ -1948,16 +1973,16 @@ fun MyPageScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                if (isLoggedIn) {
+                if (loggedInUser != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(64.dp).clip(CircleShape).background(Color(0xFFE8F5E9)), contentAlignment = Alignment.Center) {
                             Text("👨‍💻", fontSize = 32.sp)
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("개발자님, 환영합니다!", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("${loggedInUser?.name}님, 환영합니다!", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("dev@startup.com", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(loggedInUser?.userId ?: "로그인이 필요합니다", fontSize = 13.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
@@ -2019,9 +2044,9 @@ fun MyPageScreen(
             Column(modifier = Modifier.padding(top = 16.dp)) {
                 Text("설정 및 안내", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
                 MyPageToggleItem(icon = Icons.Default.Settings, title = "다크모드", checked = isDarkMode, onCheckedChange = onDarkModeChange)
-                if (isLoggedIn) {
+                if (loggedInUser != null) {
                     MyPageMenuItem(icon = Icons.Default.CreditCard, title = "결제 내역", onClick = {})
-                    MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = {}, isDanger = true)
+                    MyPageMenuItem(icon = Icons.Default.DeleteForever, title = "회원 탈퇴", onClick = { showDeleteConfirmDialog = true }, isDanger = true)
                 }
             }
     }
@@ -2031,10 +2056,59 @@ fun MyPageScreen(
     if (showBodyInfoDialog) {
         BodyInfoDialog(
             primaryColor = primaryGreen,
+            user = loggedInUser,
             onDismiss = { showBodyInfoDialog = false },
-            onCalculate = { calories ->
+            onCalculate = { calories, gender, age, height, weight, activityLvl, goal ->
                 onCaloriesCalculated(calories)
                 showBodyInfoDialog = false
+                
+                // DB Update
+                loggedInUser?.let { user ->
+                    val updatedUser = user.copy(
+                        recommendedCalories = calories,
+                        gender = gender,
+                        age = age,
+                        height = height,
+                        weight = weight,
+                        activityLevel = activityLvl.toString(),
+                        dietGoal = goal
+                    )
+                    coroutineScope.launch(Dispatchers.IO) {
+                        com.example.menu_recipe_app.db.AppDatabase.getDatabase(context).userDao().updateUser(updatedUser)
+                        withContext(Dispatchers.Main) {
+                            onUserUpdated(updatedUser)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    // 회원 탈퇴 확인 다이얼로그
+    if (showDeleteConfirmDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            containerColor = Color.White,
+            title = { Text("회원 탈퇴", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+            text = { Text("정말 탈퇴하시겠습니까?\n탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다.", fontSize = 14.sp) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        loggedInUser?.let { user ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                com.example.menu_recipe_app.db.AppDatabase.getDatabase(context).userDao().deleteUser(user)
+                                withContext(Dispatchers.Main) {
+                                    android.widget.Toast.makeText(context, "회원탈퇴가 완료되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                                    onLogoutClick()
+                                }
+                            }
+                        }
+                    }
+                ) { Text("탈퇴", color = Color(0xFFE53935), fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("취소", color = Color.Gray) }
             }
         )
     }
@@ -2044,12 +2118,18 @@ fun MyPageScreen(
 
 
 @Composable
-fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int) -> Unit) {
-    var gender by remember { mutableStateOf("남성") }
-    var age by remember { mutableStateOf("") }
-    var height by remember { mutableStateOf("") }
-    var weight by remember { mutableStateOf("") }
-    var activityLevel by remember { mutableStateOf(1.375) } // 기본값: 가벼운 활동
+fun BodyInfoDialog(
+    primaryColor: Color, 
+    user: com.example.menu_recipe_app.db.UserEntity?,
+    onDismiss: () -> Unit, 
+    onCalculate: (Int, String, Int, Float, Float, Float, String) -> Unit
+) {
+    var gender by remember { mutableStateOf(user?.gender?.takeIf { it.isNotBlank() } ?: "남성") }
+    var age by remember { mutableStateOf(if ((user?.age ?: 0) > 0) user!!.age.toString() else "") }
+    var height by remember { mutableStateOf(if ((user?.height ?: 0f) > 0f) user!!.height.toString() else "") }
+    var weight by remember { mutableStateOf(if ((user?.weight ?: 0f) > 0f) user!!.weight.toString() else "") }
+    var activityLevel by remember { mutableStateOf(user?.activityLevel?.toDoubleOrNull() ?: 1.375) } // 기본값: 보통(가벼운 활동)
+    var goal by remember { mutableStateOf(user?.dietGoal?.takeIf { it.isNotBlank() } ?: "체중 유지") } // ★ 식단 목표 상태 추가
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2102,10 +2182,33 @@ fun BodyInfoDialog(primaryColor: Color, onDismiss: () -> Unit, onCalculate: (Int
                     val h = height.toDoubleOrNull() ?: 0.0
                     val w = weight.toDoubleOrNull() ?: 0.0
                     if (a > 0 && h > 0 && w > 0) {
-                        // Mifflin-St Jeor 기초대사량 계산식 (보다 최신/정확한 공식)
-                        val bmr = if (gender == "남성") (10 * w) + (6.25 * h) - (5 * a) + 5 else (10 * w) + (6.25 * h) - (5 * a) - 161
-                        val tdee = (bmr * activityLevel).toInt() // 활동 대사량(TDEE) 계산
-                        onCalculate(tdee)
+                        // 1. Mifflin-St Jeor 기초대사량(BMR) 계산식
+                        val bmr = if (gender == "남성") {
+                            (10 * w) + (6.25 * h) - (5 * a) + 5
+                        } else {
+                            (10 * w) + (6.25 * h) - (5 * a) - 161
+                        }
+
+                        // 2. 유지 칼로리(TDEE) 계산
+                        val tdee = bmr * activityLevel
+
+                        // 3. 사용자의 목표에 따른 최종 하루 권장 칼로리 도출
+                        val finalCalories = when (goal) {
+                            "다이어트" -> tdee - 500
+                            "벌크업" -> tdee + 300
+                            else -> tdee // 체중 유지
+                        }
+
+                        // 계산된 최종 값을 메인 상태로 전달 (소수점은 버리고 정수로 변환)
+                        onCalculate(
+                            finalCalories.toInt(),
+                            gender,
+                            a,
+                            h.toFloat(),
+                            w.toFloat(),
+                            activityLevel.toFloat(),
+                            goal
+                        )
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor)

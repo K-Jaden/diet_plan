@@ -14,9 +14,10 @@ import kotlinx.coroutines.launch
         RecipeEntity::class,
         MealPlanEntity::class,
         IngredientEntity::class,
-        UserProfileEntity::class
+        UserProfileEntity::class,
+        UserEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recipeDao(): RecipeDao
     abstract fun ingredientDao(): IngredientDao
     abstract fun userProfileDao(): UserProfileDao
+    abstract fun userDao(): UserDao
 
     // AI 식단 DAO
     abstract fun mealPlanDao(): MealPlanDao
