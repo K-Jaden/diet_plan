@@ -7,9 +7,19 @@
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
+/.idea/deploymentTargetSelector.xml
+/.idea/deviceManager.xml
+/.idea/deploymentTargetDropDown.xml
+/.idea/planningMode.xml
+/.idea/.name
+/.idea/inspectionProfiles/
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+
+# Claude Code local config (personal workflow, not shared via git)
+CLAUDE.md
+.claude/
